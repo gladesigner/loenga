@@ -854,8 +854,15 @@ async function adminBeregn() {
     const rest      = faktura - totalBrenning;
     const likAndel  = rest / konfig.alle.length;
 
-    // Lagre for e-postutsending
     lastCalc = { persons, faktura, maaned, aar, maanedNavn, baseRaa, baseGlasur, totalBrenning, rest, likAndel };
+
+    // Lagre faktura i Firestore så statistikk kan bruke den
+    setDoc(doc(db, "fakturaer", månedKey(maaned, aar)), {
+      maaned, aar, faktura,
+      alle:     konfig.alle,
+      brennere: konfig.brennere,
+      lagretDato: Timestamp.now()
+    }).catch(e => console.warn("Kunne ikke lagre faktura:", e));
 
     // ---- Vis sammendrag ----
     const adm = $("adm-result");
@@ -1019,14 +1026,20 @@ async function lastStatistikk() {
   if (btn) { btn.disabled = true; btn.innerHTML = 'Henter… <span class="spinner"></span>'; }
 
   try {
-    const snap = await getDocs(collection(db, "brenninger"));
-    if (snap.size === 0) {
+    const [brennSnap, faktSnap] = await Promise.all([
+      getDocs(collection(db, "brenninger")),
+      getDocs(collection(db, "fakturaer"))
+    ]);
+    if (brennSnap.size === 0) {
       $("stat-innhold").innerHTML = `<p style="color:#6b7280">Ingen brenninger registrert ennå.</p>`;
       return;
     }
-    const data = [];
-    snap.forEach(d => data.push(d.data()));
-    renderStatistikk(data);
+    const brenninger = [];
+    brennSnap.forEach(d => brenninger.push(d.data()));
+    const fakturaer = {};
+    faktSnap.forEach(d => { fakturaer[månedKey(d.data().maaned, d.data().aar)] = d.data(); });
+
+    renderStatistikk(brenninger, fakturaer);
     $("stat-innhold").dataset.lastet = "1";
   } catch (e) {
     console.error("Statistikk-feil:", e);
@@ -1036,7 +1049,27 @@ async function lastStatistikk() {
   }
 }
 
-function renderStatistikk(data) {
+function beregnMaanedKost(fakt, brenninger) {
+  const { faktura, alle, brennere } = fakt;
+  const baseRaa    = faktura * 0.055;
+  const baseGlasur = faktura * 0.065;
+  const counts = {};
+  (brennere || []).forEach(n => counts[n] = { raa: 0, glasur: 0 });
+  brenninger.forEach(b => { if (counts[b.navn]) counts[b.navn][b.type]++; });
+  let totalBrenning = 0;
+  const persons = (alle || []).map(navn => {
+    const { raa = 0, glasur = 0 } = counts[navn] || {};
+    const kost = raa * baseRaa + glasur * baseGlasur;
+    totalBrenning += kost;
+    return { navn, kost };
+  });
+  const likAndel = (faktura - totalBrenning) / (alle?.length || 1);
+  const result = {};
+  persons.forEach(p => { result[p.navn] = p.kost + likAndel; });
+  return { result, faktura };
+}
+
+function renderStatistikk(data, fakturaer = {}) {
   const totalRaa    = data.filter(b => b.type === "raa").length;
   const totalGlasur = data.filter(b => b.type === "glasur").length;
   const total       = data.length;
@@ -1064,6 +1097,30 @@ function renderStatistikk(data) {
     .sort((a, b) => b[0].localeCompare(a[0]))
     .map(([, m]) => ({ ...m, total: m.raa + m.glasur, aktive: m.personer.size }));
   const maxM = Math.max(...months.map(m => m.total), 1);
+
+  // ---- Kostnader per person (fra lagrede fakturaer) ----
+  const kumKost = {}; // { navn: totalKr }
+  const maanedKost = []; // [{ label, personKost: { navn: kr }, faktura }]
+  let harFakturaer = false;
+
+  months.slice().reverse().forEach(m => {
+    const key  = månedKey(m.maaned, m.aar);
+    const fakt = fakturaer[key];
+    if (!fakt) return;
+    harFakturaer = true;
+    const mData = data.filter(b => b.maaned === m.maaned && b.aar === m.aar);
+    const { result, faktura } = beregnMaanedKost(fakt, mData);
+    Object.entries(result).forEach(([navn, bel]) => {
+      kumKost[navn] = (kumKost[navn] || 0) + bel;
+    });
+    maanedKost.push({ label: `${MAANEDER[m.maaned-1]} ${m.aar}`, result, faktura });
+  });
+
+  const alleNavn = [...new Set([
+    ...Object.keys(kumKost),
+    ...maanedKost.flatMap(m => Object.keys(m.result))
+  ])].sort();
+  const maxKum = Math.max(...Object.values(kumKost), 1);
 
   // ---- Bygg HTML ----
   const wrap = $("stat-innhold");
@@ -1140,7 +1197,7 @@ function renderStatistikk(data) {
 
     <!-- Per måned tabell -->
     <h3 style="margin-bottom:10px">Detaljer per måned</h3>
-    <div class="table-wrap">
+    <div class="table-wrap" style="margin-bottom:28px">
       <table>
         <thead><tr>
           <th>Måned</th>
@@ -1160,7 +1217,74 @@ function renderStatistikk(data) {
             </tr>`).join("")}
         </tbody>
       </table>
-    </div>`;
+    </div>
+
+    ${harFakturaer ? `
+    <!-- Akkumulert kostnad per person -->
+    <h3 style="margin-bottom:10px">Akkumulert kostnad per person</h3>
+    <p style="font-size:0.85rem;color:#6b7280;margin-bottom:12px">
+      Basert på ${maanedKost.length} måned${maanedKost.length !== 1 ? "er" : ""} med registrert faktura.
+    </p>
+    <div class="table-wrap" style="margin-bottom:28px">
+      <table>
+        <thead><tr>
+          <th>Navn</th>
+          <th class="num">Totalt betalt</th>
+          <th style="min-width:100px">Andel</th>
+        </tr></thead>
+        <tbody>
+          ${alleNavn.map(navn => {
+            const bel = kumKost[navn] || 0;
+            return `<tr>
+              <td><strong>${navn}</strong></td>
+              <td class="num">${kr(bel)}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+                    <div style="height:100%;width:${Math.round(bel/maxKum*100)}%;
+                                background:var(--primary);border-radius:4px"></div>
+                  </div>
+                  <span style="font-size:0.8rem;color:#6b7280;width:44px;text-align:right">
+                    ${kr(bel)}
+                  </span>
+                </div>
+              </td>
+            </tr>`;
+          }).join("")}
+          <tr class="total-row">
+            <td>Totalt</td>
+            <td class="num">${kr(Object.values(kumKost).reduce((a,b)=>a+b,0))}</td>
+            <td></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Kostnad per person per måned -->
+    <h3 style="margin-bottom:10px">Kostnad per person per måned</h3>
+    <div class="table-wrap" style="overflow-x:auto">
+      <table>
+        <thead><tr>
+          <th>Måned</th>
+          <th class="num">Faktura</th>
+          ${alleNavn.map(n => `<th class="num">${n}</th>`).join("")}
+        </tr></thead>
+        <tbody>
+          ${maanedKost.map(m => `
+            <tr>
+              <td>${m.label}</td>
+              <td class="num" style="color:#6b7280">${kr(m.faktura)}</td>
+              ${alleNavn.map(navn => `
+                <td class="num">${m.result[navn] != null ? kr(m.result[navn]) : "—"}</td>
+              `).join("")}
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>` : `
+    <div class="summary-box" style="color:#6b7280">
+      💡 Kostnader vises når admin har beregnet og lagret minst én faktura via Admin-fanen.
+    </div>`}
+  `;
 }
 
 // ============================================================
