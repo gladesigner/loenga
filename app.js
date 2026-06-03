@@ -4,7 +4,7 @@
 // ============================================================
 
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, query, where, getDocs, Timestamp }
+import { getFirestore, collection, addDoc, deleteDoc, doc, getDoc, setDoc, query, where, getDocs, Timestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -13,7 +13,6 @@ import {
   firebaseConfig,
   emailjsConfig,
   adminEmails,
-  keramikereEmails,
   betalingInfo
 } from "./config.js";
 
@@ -242,6 +241,8 @@ function initAdmin() {
   $("adm-calc-btn")?.addEventListener("click", adminBeregn);
   $("adm-send-btn")?.addEventListener("click", adminSendEmails);
   $("adm-preview-btn")?.addEventListener("click", adminTogglePreview);
+  $("adm-last-brenninger-btn")?.addEventListener("click", adminLastBrenninger);
+  $("adm-lagre-epost-btn")?.addEventListener("click", adminLagreEposter);
 
   // Google-innlogging
   $("admin-google-btn")?.addEventListener("click", adminGoogleLogin);
@@ -300,6 +301,128 @@ function visAdminPanel(email) {
   $("admin-login").style.display  = "none";
   $("admin-panel").style.display  = "block";
   $("admin-user-email").textContent = email;
+  adminVisEpostSkjema();
+}
+
+// ================================================================
+// E-POSTADRESSER – lagres i Firestore (ikke i config.js)
+// ================================================================
+let cachedEmails = null;
+
+async function hentEposter() {
+  if (cachedEmails) return cachedEmails;
+  try {
+    const snap = await getDoc(doc(db, "innstillinger", "epost"));
+    if (snap.exists()) {
+      cachedEmails = snap.data();
+      return cachedEmails;
+    }
+  } catch (e) {
+    console.warn("Kunne ikke hente e-poster fra Firestore:", e);
+  }
+  return {}; // tom – admin må fylle inn
+}
+
+async function adminVisEpostSkjema() {
+  const wrap = $("adm-epost-liste");
+  if (!wrap) return;
+  const eposter = await hentEposter();
+  wrap.innerHTML = KERAMIKERE.map(navn => `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+      <label style="width:100px;font-weight:600;font-size:0.9rem">${navn}</label>
+      <input type="email" id="epost-${navn}"
+        value="${eposter[navn] || ""}"
+        placeholder="${navn.toLowerCase()}@example.com"
+        style="flex:1;padding:8px 10px;border:1.5px solid #dde2e8;border-radius:8px;font-size:0.9rem">
+    </div>`).join("");
+}
+
+async function adminLagreEposter() {
+  const eposter = {};
+  KERAMIKERE.forEach(navn => {
+    const val = document.getElementById(`epost-${navn}`)?.value.trim();
+    if (val) eposter[navn] = val;
+  });
+  try {
+    await setDoc(doc(db, "innstillinger", "epost"), eposter);
+    cachedEmails = eposter;
+    showFeedback("adm-epost-feedback", "success", "✓ E-postadresser lagret");
+  } catch (e) {
+    showFeedback("adm-epost-feedback", "error", "Feil ved lagring av e-postadresser");
+    console.error(e);
+  }
+}
+
+// ================================================================
+// ADMINISTRER BRENNINGER – vis og slett
+// ================================================================
+async function adminLastBrenninger() {
+  if (!adminAuthenticated) return;
+  const maaned = parseInt($("adm-maaned").value);
+  const aar    = parseInt($("adm-aar").value);
+  const wrap   = $("adm-brenninger-liste");
+  wrap.innerHTML = "<p style='color:#6b7280'>Henter…</p>";
+
+  try {
+    const snap = await getDocs(
+      query(collection(db, "brenninger"),
+        where("maaned", "==", maaned),
+        where("aar",    "==", aar))
+    );
+
+    if (snap.size === 0) {
+      wrap.innerHTML = `<p style="color:#6b7280;font-size:0.9rem">
+        Ingen brenninger for ${MAANEDER[maaned-1]} ${aar}.</p>`;
+      return;
+    }
+
+    const liste = [];
+    snap.forEach(d => liste.push({ id: d.id, ...d.data() }));
+    liste.sort((a, b) => a.navn.localeCompare(b.navn));
+
+    wrap.innerHTML = `<div class="table-wrap"><table>
+      <thead><tr><th>Navn</th><th>Type</th><th></th></tr></thead>
+      <tbody>
+        ${liste.map(b => `
+          <tr id="brow-${b.id}">
+            <td>${b.navn}</td>
+            <td>${b.type === "raa" ? "Råbrann" : "Glasurbrann"}</td>
+            <td style="text-align:right">
+              <button class="btn-slett-brenning" data-id="${b.id}"
+                style="background:none;border:1.5px solid #dc2626;color:#dc2626;
+                       padding:4px 12px;border-radius:6px;cursor:pointer;font-size:0.85rem">
+                Slett
+              </button>
+            </td>
+          </tr>`).join("")}
+      </tbody>
+    </table></div>`;
+
+    wrap.querySelectorAll(".btn-slett-brenning").forEach(btn => {
+      btn.addEventListener("click", () => slettBrenning(btn.dataset.id, maaned, aar));
+    });
+  } catch (e) {
+    wrap.innerHTML = `<div class="feedback show error">Feil ved henting.</div>`;
+    console.error(e);
+  }
+}
+
+async function slettBrenning(id, maaned, aar) {
+  if (!confirm("Slett denne brenningen?")) return;
+  try {
+    await deleteDoc(doc(db, "brenninger", id));
+    $(`brow-${id}`)?.remove();
+    // Oppdater beregningen hvis den er gjort
+    if (lastCalc && lastCalc.maaned === maaned && lastCalc.aar === aar) {
+      lastCalc = null;
+      $("adm-result").innerHTML =
+        `<div class="feedback show info">Brenning slettet. Kjør beregningen på nytt.</div>`;
+      $("adm-email-section").style.display = "none";
+    }
+  } catch (e) {
+    alert("Kunne ikke slette. Sjekk at du er logget inn som admin.");
+    console.error(e);
+  }
 }
 
 async function adminBeregn() {
@@ -376,7 +499,7 @@ async function adminBeregn() {
       }).join("")}`;
 
     $("adm-email-section").style.display = "block";
-    buildEmailStatusTable(persons, likAndel);
+    await buildEmailStatusTable(persons, likAndel);
 
     // Hide old preview
     const prev = $("adm-preview-content");
@@ -393,11 +516,12 @@ async function adminBeregn() {
 }
 
 // ---- Status-tabell for e-postsending ----
-function buildEmailStatusTable(persons, likAndel) {
+async function buildEmailStatusTable(persons, likAndel) {
   const container = $("adm-email-table");
+  const eposter   = await hentEposter();
   let rows = persons.map(p => {
     const totalt = p.kost + likAndel;
-    const email  = keramikereEmails[p.navn] || "—";
+    const email  = eposter[p.navn] || "—";
     return `<tr id="erow-${p.navn}">
       <td>${p.navn}</td>
       <td style="font-size:0.85rem">${email}</td>
@@ -436,11 +560,12 @@ async function adminSendEmails() {
 
   emailjs.init(emailjsConfig.publicKey);
 
+  const eposter = await hentEposter();
   const { persons, likAndel, maanedNavn, aar } = lastCalc;
   let sent = 0, failed = 0, skipped = 0;
 
   for (const p of persons) {
-    const email  = keramikereEmails[p.navn];
+    const email  = eposter[p.navn];
     const statEl = $(`estat-${p.navn}`);
     const totalt = p.kost + likAndel;
 

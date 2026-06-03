@@ -29,18 +29,8 @@ export const adminEmails = [
   "gladesigner@gmail.com"   // ← bytt til ekte Google-e-post
 ];
 
-// 4. E-postadresser til keramikerne
-export const keramikereEmails = {
-  "Maia":     "maia@example.com",
-  "Marte":    "marte@example.com",
-  "Martine":  "martine@example.com",
-  "Mingshu":  "mingshu@example.com",
-  "Olga":     "olga@example.com",
-  "Silja":    "silja@example.com",
-  "Victoria": "victoria@example.com"
-};
-
-// 5. Betalingsinformasjon (vises i e-post og i appen)
+// 4. Betalingsinformasjon (vises i e-post og i appen)
+// NB: E-postadresser lagres i Firebase (Admin → E-postadresser) – ikke her
 export const betalingInfo = {
   navn:  "Marte Sørensen",
   konto: "9802.62.01039",
