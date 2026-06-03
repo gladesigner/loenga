@@ -906,7 +906,7 @@ async function adminBeregn() {
 // ================================================================
 function lastNedBilde() {
   if (!lastCalc) return;
-  const { persons, likAndel, maanedNavn, aar } = lastCalc;
+  const { persons, likAndel, maanedNavn, aar, faktura } = lastCalc;
 
   const W = 560, PAD = 28;
   const HEADER_H = 76;
@@ -929,6 +929,11 @@ function lastNedBilde() {
   ctx.font = '13px Arial';
   ctx.fillStyle = 'rgba(255,255,255,0.75)';
   ctx.fillText('Fordeling av strømkostnader', PAD, 56);
+  // Fakturabeløp høyre side av headeren
+  const faktStr = `Faktura: ${kr(faktura)}`;
+  ctx.font = 'bold 13px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.9)';
+  ctx.fillText(faktStr, W - PAD - ctx.measureText(faktStr).width, 56);
 
   let y = HEADER_H + 22;
   ctx.font = '12px Arial';
