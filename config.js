@@ -44,4 +44,3 @@ export const betalingInfo = {
   konto: "9802.62.01039",
   vipps: "91715753"
 };
-
