@@ -43,10 +43,12 @@ function firebaseKrever(id) {
 }
 
 // ---- Konstanter ----
-// Kun disse fire bruker ovnen og kan registrere brenninger
-const BRENNERE = ["Marte", "Mingshu", "Olia", "Silja"];
-// Alle syv deler restbeløpet likt
-const ALLE     = ["Maia", "Marte", "Martine", "Mingshu", "Olia", "Silja", "Victoria"];
+// Komplett liste over alle som noen gang kan være med — brukes i admin-konfig
+const ALLE_MULIGE = ["Maia", "Marte", "Martine", "Mingshu", "Olia", "Silja", "Victoria"];
+
+// Standard-konfig brukes når ingen månedskonfig er satt
+const BRENNERE_DEFAULT = ["Marte", "Mingshu", "Olia", "Silja"];
+const ALLE_DEFAULT     = ["Maia", "Marte", "Martine", "Mingshu", "Olia", "Silja", "Victoria"];
 const MAANEDER   = [
   "Januar","Februar","Mars","April","Mai","Juni",
   "Juli","August","September","Oktober","November","Desember"
@@ -81,13 +83,18 @@ function populateMonthSelect(id, selected = now.getMonth() + 1) {
   });
 }
 
-function populateNameSelect(id) {
-  const sel = $(id);
-  sel.innerHTML = '<option value="">Velg navn...</option>';
-  BRENNERE.forEach(n => {
+async function oppdaterNavnDropdown() {
+  const maaned = parseInt($("reg-maaned").value);
+  const aar    = parseInt($("reg-aar").value);
+  const konfig = await hentMånedskonfig(maaned, aar);
+  const sel    = $("reg-navn");
+  const valgt  = sel?.value;
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Velg navn…</option>';
+  konfig.brennere.forEach(n => {
     const opt = document.createElement("option");
-    opt.value = n;
-    opt.textContent = n;
+    opt.value = n; opt.textContent = n;
+    if (n === valgt) opt.selected = true;
     sel.appendChild(opt);
   });
 }
@@ -108,10 +115,14 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
 // FANE 1 – Registrer brenning
 // ============================================================
 function initRegister() {
-  populateNameSelect("reg-navn");
   populateMonthSelect("reg-maaned");
   $("reg-aar").value = now.getFullYear();
+  oppdaterNavnDropdown();
   visNyesteRegistreringer();
+
+  // Oppdater navn-dropdown når måned eller år endres
+  $("reg-maaned").addEventListener("change", oppdaterNavnDropdown);
+  $("reg-aar").addEventListener("change", oppdaterNavnDropdown);
 
   $("reg-btn").addEventListener("click", async () => {
     const navn  = $("reg-navn").value.trim();
@@ -282,6 +293,8 @@ function initAdmin() {
   $("adm-kopier-btn")?.addEventListener("click", kopierDeleTekst);
   $("adm-last-brenninger-btn")?.addEventListener("click", adminLastBrenninger);
   $("adm-lagre-mottakere-btn")?.addEventListener("click", lagreMottakere);
+  $("adm-last-konfig-btn")?.addEventListener("click", adminLastKonfig);
+  $("adm-lagre-konfig-btn")?.addEventListener("click", adminLagreKonfig);
 
   // Google-innlogging
   $("admin-google-btn")?.addEventListener("click", adminGoogleLogin);
@@ -366,6 +379,71 @@ async function lagreMottakere() {
     showFeedback("adm-mottakere-feedback", "success", "✓ E-postadresser lagret i Firebase");
   } catch (e) {
     showFeedback("adm-mottakere-feedback", "error", "Feil ved lagring");
+    console.error(e);
+  }
+}
+
+// ================================================================
+// MÅNEDSKONFIGURASJON – hvem er med denne måneden?
+// ================================================================
+function månedKey(maaned, aar) {
+  return `${aar}-${String(maaned).padStart(2, "0")}`;
+}
+
+async function hentMånedskonfig(maaned, aar) {
+  if (!firebaseOk) return { alle: [...ALLE_DEFAULT], brennere: [...BRENNERE_DEFAULT] };
+  try {
+    const snap = await getDoc(doc(db, "månedskonfig", månedKey(maaned, aar)));
+    if (snap.exists()) return snap.data();
+  } catch (e) {
+    console.warn("Ingen månedskonfig, bruker standard:", e.message);
+  }
+  return { alle: [...ALLE_DEFAULT], brennere: [...BRENNERE_DEFAULT] };
+}
+
+async function adminLastKonfig() {
+  const maaned = parseInt($("adm-maaned").value);
+  const aar    = parseInt($("adm-aar").value);
+  const konfig = await hentMånedskonfig(maaned, aar);
+  const panel  = $("adm-konfig-panel");
+
+  // Bygg checkboxer for begge grupper
+  ["alle", "brennere"].forEach(gruppe => {
+    const wrap = $(`konfig-${gruppe}`);
+    wrap.innerHTML = ALLE_MULIGE.map(navn => `
+      <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
+        <input type="checkbox" value="${navn}"
+          ${konfig[gruppe].includes(navn) ? "checked" : ""}
+          style="width:16px;height:16px;accent-color:var(--primary)">
+        <span>${navn}</span>
+      </label>`).join("");
+  });
+
+  panel.style.display = "block";
+}
+
+async function adminLagreKonfig() {
+  const maaned   = parseInt($("adm-maaned").value);
+  const aar      = parseInt($("adm-aar").value);
+  const hentValgte = id =>
+    [...document.querySelectorAll(`#${id} input:checked`)].map(cb => cb.value);
+
+  const alle     = hentValgte("konfig-alle");
+  const brennere = hentValgte("konfig-brennere");
+
+  if (!alle.length) {
+    return showFeedback("adm-konfig-feedback", "error", "Velg minst én deltaker.");
+  }
+
+  try {
+    await setDoc(doc(db, "månedskonfig", månedKey(maaned, aar)),
+      { alle, brennere, oppdatert: Timestamp.now() });
+    showFeedback("adm-konfig-feedback", "success",
+      `✓ Konfigurasjon lagret for ${MAANEDER[maaned-1]} ${aar} (${alle.length} deltakere, ${brennere.length} ovnsbrukere)`);
+    // Oppdater registreringsdropdown med ny konfig
+    oppdaterNavnDropdown();
+  } catch (e) {
+    showFeedback("adm-konfig-feedback", "error", "Feil ved lagring.");
     console.error(e);
   }
 }
@@ -647,9 +725,11 @@ async function adminBeregn() {
         where("aar",    "==", aar))
     );
 
-    // Tell brenninger kun for de fire som bruker ovnen
+    // Hent hvem som er med denne måneden
+    const konfig = await hentMånedskonfig(maaned, aar);
+
     const counts = {};
-    BRENNERE.forEach(n => counts[n] = { raa: 0, glasur: 0 });
+    konfig.brennere.forEach(n => counts[n] = { raa: 0, glasur: 0 });
     snap.forEach(doc => {
       const d = doc.data();
       if (counts[d.navn]) counts[d.navn][d.type]++;
@@ -660,8 +740,7 @@ async function adminBeregn() {
     const baseGlasur = faktura * 0.065;
 
     let totalBrenning = 0;
-    // Bygg persons-liste for alle 7 (brennere får brenningskostnad, andre får 0)
-    const persons = ALLE.map(navn => {
+    const persons = konfig.alle.map(navn => {
       const { raa, glasur } = counts[navn] || { raa: 0, glasur: 0 };
       const kost = raa * baseRaa + glasur * baseGlasur;
       totalBrenning += kost;
@@ -669,7 +748,7 @@ async function adminBeregn() {
     });
 
     const rest      = faktura - totalBrenning;
-    const likAndel  = rest / ALLE.length; // deles likt på alle 7
+    const likAndel  = rest / konfig.alle.length;
 
     // Lagre for e-postutsending
     lastCalc = { persons, faktura, maaned, aar, maanedNavn, baseRaa, baseGlasur, totalBrenning, rest, likAndel };
@@ -682,7 +761,7 @@ async function adminBeregn() {
         <strong>Råbrann per brann:</strong> ${kr(baseRaa)} (5,5 %)<br>
         <strong>Glasurbrann per brann:</strong> ${kr(baseGlasur)} (6,5 %)<br>
         <strong>Sum brenningskostnader:</strong> ${kr(totalBrenning)}<br>
-        <strong>Resterende delt likt (${ALLE.length} personer):</strong>
+        <strong>Resterende delt likt (${konfig.alle.length} personer):</strong>
         ${kr(rest)} → <strong>${kr(likAndel)}</strong> per person
       </div>
       ${persons.map(p => {
