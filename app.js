@@ -46,7 +46,7 @@ function firebaseKrever(id) {
 // Komplett liste over alle som noen gang kan være med — brukes i admin-konfig
 const ALLE_MULIGE = ["Maia", "Marte", "Martine", "Mingshu", "Olia", "Silja", "Victoria"];
 
-// Standard-konfig brukes når ingen månedskonfig er satt
+// Standard-konfig brukes når ingen manedskonfig er satt
 const BRENNERE_DEFAULT = ["Marte", "Mingshu", "Olia", "Silja"];
 const ALLE_DEFAULT     = ["Maia", "Marte", "Martine", "Mingshu", "Olia", "Silja", "Victoria"];
 const MAANEDER   = [
@@ -393,10 +393,10 @@ function månedKey(maaned, aar) {
 async function hentMånedskonfig(maaned, aar) {
   if (!firebaseOk) return { alle: [...ALLE_DEFAULT], brennere: [...BRENNERE_DEFAULT] };
   try {
-    const snap = await getDoc(doc(db, "månedskonfig", månedKey(maaned, aar)));
+    const snap = await getDoc(doc(db, "manedskonfig", månedKey(maaned, aar)));
     if (snap.exists()) return snap.data();
   } catch (e) {
-    console.warn("Ingen månedskonfig, bruker standard:", e.message);
+    console.warn("Ingen manedskonfig, bruker standard:", e.message);
   }
   return { alle: [...ALLE_DEFAULT], brennere: [...BRENNERE_DEFAULT] };
 }
@@ -436,7 +436,7 @@ async function adminLagreKonfig() {
   }
 
   try {
-    await setDoc(doc(db, "månedskonfig", månedKey(maaned, aar)),
+    await setDoc(doc(db, "manedskonfig", månedKey(maaned, aar)),
       { alle, brennere, oppdatert: Timestamp.now() });
     showFeedback("adm-konfig-feedback", "success",
       `✓ Konfigurasjon lagret for ${MAANEDER[maaned-1]} ${aar} (${alle.length} deltakere, ${brennere.length} ovnsbrukere)`);
