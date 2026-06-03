@@ -4,13 +4,14 @@
 
 // 1. Firebase-konfigurasjon
 //    Finn disse i Firebase Console → Prosjektinnstillinger → Dine apper
-export const firebaseConfig = {
-  apiKey:            "DIN_API_NØKKEL",
-  authDomain:        "ditt-prosjekt.firebaseapp.com",
-  projectId:         "ditt-prosjekt-id",
-  storageBucket:     "ditt-prosjekt.firebasestorage.app",
-  messagingSenderId: "123456789",
-  appId:             "1:123456789:web:abcdef123456"
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyChIsUHiywTJQhZSeM5-TCWyfd7qltwpFg",
+  authDomain: "loenga.firebaseapp.com",
+  projectId: "loenga",
+  storageBucket: "loenga.firebasestorage.app",
+  messagingSenderId: "227441599547",
+  appId: "1:227441599547:web:e79d5ffe5b4ac02b45681e"
 };
 
 // 2. EmailJS-konfigurasjon
@@ -43,3 +44,4 @@ export const betalingInfo = {
   konto: "9802.62.01039",
   vipps: "91715753"
 };
+
