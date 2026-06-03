@@ -999,8 +999,174 @@ function kopierDeleTekst() {
 window.fjernPerson = fjernPerson;
 
 // ============================================================
+// FANE 3 – Statistikk
+// ============================================================
+function initStatistikk() {
+  $("stat-oppdater-btn")?.addEventListener("click", lastStatistikk);
+
+  // Last automatisk når fanen åpnes første gang
+  document.querySelector('[data-tab="statistikk"]')?.addEventListener("click", () => {
+    if (!$("stat-innhold").dataset.lastet) lastStatistikk();
+  });
+}
+
+async function lastStatistikk() {
+  if (!firebaseOk) {
+    $("stat-innhold").innerHTML = `<div class="feedback show error">Firebase ikke tilgjengelig.</div>`;
+    return;
+  }
+  const btn = $("stat-oppdater-btn");
+  if (btn) { btn.disabled = true; btn.innerHTML = 'Henter… <span class="spinner"></span>'; }
+
+  try {
+    const snap = await getDocs(collection(db, "brenninger"));
+    if (snap.size === 0) {
+      $("stat-innhold").innerHTML = `<p style="color:#6b7280">Ingen brenninger registrert ennå.</p>`;
+      return;
+    }
+    const data = [];
+    snap.forEach(d => data.push(d.data()));
+    renderStatistikk(data);
+    $("stat-innhold").dataset.lastet = "1";
+  } catch (e) {
+    console.error("Statistikk-feil:", e);
+    $("stat-innhold").innerHTML = `<div class="feedback show error">Feil: ${e.message}</div>`;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = "Oppdater"; }
+  }
+}
+
+function renderStatistikk(data) {
+  const totalRaa    = data.filter(b => b.type === "raa").length;
+  const totalGlasur = data.filter(b => b.type === "glasur").length;
+  const total       = data.length;
+
+  // ---- Per person ----
+  const pp = {};
+  data.forEach(b => {
+    if (!pp[b.navn]) pp[b.navn] = { raa: 0, glasur: 0 };
+    pp[b.navn][b.type]++;
+  });
+  const persons = Object.entries(pp)
+    .map(([navn, t]) => ({ navn, raa: t.raa, glasur: t.glasur, total: t.raa + t.glasur }))
+    .sort((a, b) => b.total - a.total);
+  const maxP = persons[0]?.total || 1;
+
+  // ---- Per måned ----
+  const pm = {};
+  data.forEach(b => {
+    const key = `${b.aar}-${String(b.maaned).padStart(2, "0")}`;
+    if (!pm[key]) pm[key] = { maaned: b.maaned, aar: b.aar, raa: 0, glasur: 0, personer: new Set() };
+    pm[key][b.type]++;
+    pm[key].personer.add(b.navn);
+  });
+  const months = Object.entries(pm)
+    .sort((a, b) => b[0].localeCompare(a[0]))
+    .map(([, m]) => ({ ...m, total: m.raa + m.glasur, aktive: m.personer.size }));
+  const maxM = Math.max(...months.map(m => m.total), 1);
+
+  // ---- Bygg HTML ----
+  const wrap = $("stat-innhold");
+  wrap.innerHTML = `
+
+    <!-- Sammendrag -->
+    <div class="summary-box" style="margin-bottom:24px">
+      <strong>Totalt:</strong> ${total} brenninger
+      &nbsp;·&nbsp; Råbrann: ${totalRaa}
+      &nbsp;·&nbsp; Glasurbrann: ${totalGlasur}
+      &nbsp;·&nbsp; ${months.length} måneder med aktivitet
+    </div>
+
+    <!-- Per person -->
+    <h3 style="margin-bottom:10px">Per person – alle tider</h3>
+    <div class="table-wrap" style="margin-bottom:28px">
+      <table>
+        <thead><tr>
+          <th>Navn</th>
+          <th class="num">Råbrann</th>
+          <th class="num">Glasurbrann</th>
+          <th class="num">Totalt</th>
+          <th style="min-width:80px">Andel</th>
+        </tr></thead>
+        <tbody>
+          ${persons.map(p => `
+            <tr>
+              <td><strong>${p.navn}</strong></td>
+              <td class="num">${p.raa}</td>
+              <td class="num">${p.glasur}</td>
+              <td class="num">${p.total}</td>
+              <td>
+                <div style="display:flex;align-items:center;gap:6px">
+                  <div style="flex:1;height:8px;background:#e5e7eb;border-radius:4px;overflow:hidden">
+                    <div style="height:100%;width:${Math.round(p.total / maxP * 100)}%;
+                                background:var(--primary);border-radius:4px"></div>
+                  </div>
+                  <span style="font-size:0.8rem;color:#6b7280;width:28px;text-align:right">
+                    ${Math.round(p.total / total * 100)} %
+                  </span>
+                </div>
+              </td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Månedlig diagram -->
+    <h3 style="margin-bottom:12px">Aktivitet per måned</h3>
+    <div style="overflow-x:auto;margin-bottom:28px">
+      <div style="display:flex;align-items:flex-end;gap:6px;min-height:100px;padding-bottom:28px;position:relative;min-width:${months.length * 42}px">
+        ${months.slice().reverse().map(m => {
+          const rPct  = Math.round(m.raa    / maxM * 88);
+          const gPct  = Math.round(m.glasur / maxM * 88);
+          const label = MAANEDER[m.maaned - 1].substring(0, 3) + " " + String(m.aar).slice(2);
+          return `<div style="flex:1;min-width:34px;display:flex;flex-direction:column;align-items:center;gap:2px">
+            <span style="font-size:0.72rem;color:#374151;font-weight:600">${m.total || ""}</span>
+            <div style="width:100%;display:flex;flex-direction:column;justify-content:flex-end;gap:1px">
+              <div style="height:${gPct}px;background:#6aaa6d;border-radius:3px 3px 0 0;min-height:${m.glasur?2:0}px"
+                   title="Glasurbrann: ${m.glasur}"></div>
+              <div style="height:${rPct}px;background:var(--primary);border-radius:${m.glasur?0:3}px 0 0 0;min-height:${m.raa?2:0}px"
+                   title="Råbrann: ${m.raa}"></div>
+            </div>
+            <span style="font-size:0.68rem;color:#6b7280;writing-mode:vertical-rl;
+                         transform:rotate(180deg);height:38px;text-align:center">${label}</span>
+          </div>`;
+        }).join("")}
+      </div>
+      <div style="display:flex;gap:14px;font-size:0.82rem;color:#6b7280;margin-top:4px">
+        <span><span style="display:inline-block;width:10px;height:10px;background:var(--primary);border-radius:2px;margin-right:4px"></span>Råbrann</span>
+        <span><span style="display:inline-block;width:10px;height:10px;background:#6aaa6d;border-radius:2px;margin-right:4px"></span>Glasurbrann</span>
+      </div>
+    </div>
+
+    <!-- Per måned tabell -->
+    <h3 style="margin-bottom:10px">Detaljer per måned</h3>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Måned</th>
+          <th class="num">Råbrann</th>
+          <th class="num">Glasurbrann</th>
+          <th class="num">Totalt</th>
+          <th class="num">Aktive</th>
+        </tr></thead>
+        <tbody>
+          ${months.map(m => `
+            <tr>
+              <td>${MAANEDER[m.maaned - 1]} ${m.aar}</td>
+              <td class="num">${m.raa}</td>
+              <td class="num">${m.glasur}</td>
+              <td class="num"><strong>${m.total}</strong></td>
+              <td class="num">${m.aktive}</td>
+            </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+// ============================================================
 // Init
 // ============================================================
 initRegister();
 initOversikt();
+initStatistikk();
 initAdmin();

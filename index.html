@@ -13,6 +13,7 @@
     <nav>
       <button class="tab-btn active" data-tab="register">Registrer brenning</button>
       <button class="tab-btn"        data-tab="oversikt">Oversikt</button>
+      <button class="tab-btn"        data-tab="statistikk">Statistikk</button>
       <button class="tab-btn"        data-tab="admin">Admin 🔒</button>
     </nav>
   </header>
@@ -77,7 +78,20 @@
     </section>
 
     <!-- ======================================================
-         FANE 3 – Admin
+         FANE 3 – Statistikk
+    ====================================================== -->
+    <section id="tab-statistikk" class="tab-content">
+      <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:20px; flex-wrap:wrap; gap:10px">
+        <h2 style="margin:0">Statistikk</h2>
+        <button id="stat-oppdater-btn" class="btn-secondary">Oppdater</button>
+      </div>
+      <div id="stat-innhold">
+        <p style="color:#6b7280;font-size:0.9rem">Trykk «Oppdater» for å hente data.</p>
+      </div>
+    </section>
+
+    <!-- ======================================================
+         FANE 4 – Admin
     ====================================================== -->
     <section id="tab-admin" class="tab-content">
 
