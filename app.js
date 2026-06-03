@@ -6,17 +6,20 @@
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
 import { getFirestore, collection, addDoc, query, where, getDocs, Timestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged }
+  from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
 
 import {
   firebaseConfig,
   emailjsConfig,
-  ADMIN_PASSORD,
+  adminEmails,
   keramikereEmails,
   betalingInfo
 } from "./config.js";
 
 // ---- Firebase init ----
-let db = null;
+let db   = null;
+let auth = null;
 let firebaseOk = false;
 
 try {
@@ -24,11 +27,11 @@ try {
     throw new Error("Firebase er ikke konfigurert i config.js");
   }
   const fbApp = initializeApp(firebaseConfig);
-  db = getFirestore(fbApp);
+  db   = getFirestore(fbApp);
+  auth = getAuth(fbApp);
   firebaseOk = true;
 } catch (e) {
   console.warn("Firebase ikke tilgjengelig:", e.message);
-  // Appen laster videre – Firestore-kall fanges per funksjon
 }
 
 function firebaseKrever(id) {
@@ -230,29 +233,73 @@ async function loadOversikt() {
 // FANE 3 – Admin
 // ============================================================
 let adminAuthenticated = false;
-let lastCalc = null; // { persons, faktura, maaned, aar, maanedNavn, likAndel }
+let lastCalc = null;
 
 function initAdmin() {
   populateMonthSelect("adm-maaned");
   $("adm-aar").value = now.getFullYear();
 
-  // Passord-innlogging
-  $("admin-login-btn").addEventListener("click", adminLogin);
-  $("admin-pw").addEventListener("keydown", e => { if (e.key === "Enter") adminLogin(); });
-
   $("adm-calc-btn").addEventListener("click", adminBeregn);
   $("adm-send-btn").addEventListener("click", adminSendEmails);
   $("adm-preview-btn").addEventListener("click", adminTogglePreview);
+
+  // Google-innlogging
+  $("admin-google-btn").addEventListener("click", adminGoogleLogin);
+  $("admin-logout-btn").addEventListener("click", adminLogout);
+
+  // Sjekk om brukeren allerede er innlogget (ved sideoppdatering)
+  if (auth) {
+    onAuthStateChanged(auth, bruker => {
+      if (bruker && adminEmails.includes(bruker.email)) {
+        visAdminPanel(bruker.email);
+      } else if (bruker) {
+        // Innlogget, men ikke admin-e-post
+        signOut(auth);
+        $("admin-login-error").textContent = `${bruker.email} har ikke admin-tilgang.`;
+      }
+    });
+  }
 }
 
-function adminLogin() {
-  if ($("admin-pw").value === ADMIN_PASSORD) {
-    adminAuthenticated = true;
-    $("admin-login").style.display = "none";
-    $("admin-panel").style.display = "block";
-  } else {
-    $("admin-login-error").textContent = "Feil passord.";
+async function adminGoogleLogin() {
+  if (!firebaseOk) return;
+  const btn = $("admin-google-btn");
+  btn.disabled = true;
+  btn.textContent = "Logger inn…";
+  try {
+    const result = await signInWithPopup(auth, new GoogleAuthProvider());
+    const email  = result.user.email;
+    if (adminEmails.includes(email)) {
+      visAdminPanel(email);
+    } else {
+      await signOut(auth);
+      $("admin-login-error").textContent = `${email} har ikke admin-tilgang.`;
+    }
+  } catch (e) {
+    $("admin-login-error").textContent = "Innlogging avbrutt eller feilet.";
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = '<img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" style="height:18px;vertical-align:middle;margin-right:8px">Logg inn med Google';
   }
+}
+
+async function adminLogout() {
+  if (auth) await signOut(auth);
+  adminAuthenticated = false;
+  lastCalc = null;
+  $("admin-panel").style.display  = "none";
+  $("admin-login").style.display  = "block";
+  $("admin-login-error").textContent = "";
+  $("adm-result").innerHTML = "";
+  $("adm-email-section").style.display = "none";
+}
+
+function visAdminPanel(email) {
+  adminAuthenticated = true;
+  $("admin-login").style.display  = "none";
+  $("admin-panel").style.display  = "block";
+  $("admin-user-email").textContent = email;
 }
 
 async function adminBeregn() {

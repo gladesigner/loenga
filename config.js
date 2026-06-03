@@ -23,9 +23,11 @@ export const emailjsConfig = {
   templateId: "template_xxxxxxx"      // Email Templates → Template ID
 };
 
-// 3. Admin-passord
-//    Dette brukes for å låse opp beregning og e-postutsending
-export const ADMIN_PASSORD = "loenga2024";
+// 3. Admin-e-poster (Google-kontoer med admin-tilgang)
+//    Legg til e-postadressen(e) til de som skal ha admin-tilgang
+export const adminEmails = [
+  "gladesigner@gmail.com"   // ← bytt til ekte Google-e-post
+];
 
 // 4. E-postadresser til keramikerne
 export const keramikereEmails = {
