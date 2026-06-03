@@ -1,0 +1,710 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loenga Keramikk – DEMO</title>
+  <link rel="stylesheet" href="style.css">
+  <style>
+    .demo-banner {
+      background: #f59e0b;
+      color: #1c1917;
+      text-align: center;
+      padding: 8px 16px;
+      font-size: 0.88rem;
+      font-weight: 700;
+      letter-spacing: 0.3px;
+    }
+    .demo-banner span { font-weight: 400; }
+
+    /* Modal */
+    .modal-backdrop {
+      display: none;
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.5);
+      z-index: 100;
+      padding: 20px;
+      overflow-y: auto;
+    }
+    .modal-backdrop.open { display: flex; align-items: flex-start; justify-content: center; }
+    .modal {
+      background: white;
+      border-radius: 12px;
+      padding: 24px;
+      max-width: 640px;
+      width: 100%;
+      margin: auto;
+    }
+    .modal-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+    }
+    .modal-header h3 { font-size: 1.1rem; }
+    .modal-close {
+      background: none;
+      border: none;
+      font-size: 1.5rem;
+      cursor: pointer;
+      color: #6b7280;
+      line-height: 1;
+      padding: 0 4px;
+    }
+    .email-card {
+      border: 1px solid #dde2e8;
+      border-radius: 8px;
+      margin-bottom: 12px;
+      overflow: hidden;
+    }
+    .email-card-header {
+      background: #f3f4f6;
+      padding: 8px 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 0.9rem;
+      font-weight: 600;
+    }
+    .copy-btn {
+      background: #2c5f2e;
+      color: white;
+      border: none;
+      padding: 4px 10px;
+      border-radius: 6px;
+      font-size: 0.8rem;
+      cursor: pointer;
+    }
+    .copy-btn:active { background: #1a3d1b; }
+    .email-body {
+      padding: 10px 12px;
+      font-family: monospace;
+      font-size: 0.82rem;
+      white-space: pre-wrap;
+      color: #374151;
+      background: #fafafa;
+    }
+
+    /* Delete button */
+    .btn-danger {
+      background: white;
+      color: #dc2626;
+      border: 1.5px solid #dc2626;
+      padding: 8px 14px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      font-weight: 600;
+      cursor: pointer;
+      margin-top: 20px;
+    }
+    .btn-danger:hover { background: #fee2e2; }
+
+    /* Brenning-liste */
+    .brenning-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 12px;
+      border-bottom: 1px solid #f3f4f6;
+      font-size: 0.9rem;
+    }
+    .brenning-item:last-child { border-bottom: none; }
+    .delete-item {
+      background: none;
+      border: none;
+      color: #dc2626;
+      cursor: pointer;
+      font-size: 1rem;
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+    .delete-item:hover { background: #fee2e2; }
+  </style>
+</head>
+<body>
+
+  <div class="demo-banner">
+    🟡 DEMO-MODUS — <span>data lagres i nettleseren (localStorage), ikke Firebase</span>
+  </div>
+
+  <header>
+    <h1>⚡ Loenga Keramikk</h1>
+    <nav>
+      <button class="tab-btn active" data-tab="register">Registrer brenning</button>
+      <button class="tab-btn"        data-tab="oversikt">Oversikt</button>
+      <button class="tab-btn"        data-tab="admin">Admin 🔒</button>
+    </nav>
+  </header>
+
+  <main>
+
+    <!-- FANE 1 -->
+    <section id="tab-register" class="tab-content active">
+      <h2>Registrer brenning</h2>
+
+      <div class="form-group">
+        <label for="reg-navn">Ditt navn</label>
+        <select id="reg-navn"><option value="">Velg navn…</option></select>
+      </div>
+
+      <div class="form-group">
+        <label>Type brenning</label>
+        <div class="radio-group">
+          <label>
+            <input type="radio" name="brenning" value="raa">
+            Råbrann <span class="type-hint">(5,5 % av faktura)</span>
+          </label>
+          <label>
+            <input type="radio" name="brenning" value="glasur">
+            Glasurbrann <span class="type-hint">(6,5 % av faktura)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Måned og år</label>
+        <div class="row">
+          <select id="reg-maaned"></select>
+          <input id="reg-aar" type="number" min="2024" max="2035">
+        </div>
+      </div>
+
+      <button id="reg-btn" class="btn-primary">Legg til brenning</button>
+      <div id="reg-feedback" class="feedback"></div>
+
+      <!-- Siste registreringer -->
+      <h3 style="margin-top:24px">Siste registreringer</h3>
+      <div id="reg-list" class="table-wrap" style="margin-top:8px"></div>
+      <button class="btn-danger" id="slett-alle-btn">🗑 Slett alle demo-data</button>
+    </section>
+
+    <!-- FANE 2 -->
+    <section id="tab-oversikt" class="tab-content">
+      <h2>Oversikt brenninger</h2>
+      <div class="row" style="margin-bottom:16px">
+        <select id="ov-maaned"></select>
+        <input id="ov-aar" type="number" min="2024" max="2035">
+        <button id="ov-load-btn" class="btn-secondary">Hent</button>
+      </div>
+      <div id="ov-table-container"></div>
+    </section>
+
+    <!-- FANE 3 -->
+    <section id="tab-admin" class="tab-content">
+
+      <div id="admin-login">
+        <h2>Admin-tilgang</h2>
+        <div class="form-group">
+          <label for="admin-pw">Passord</label>
+          <input type="password" id="admin-pw" placeholder="Skriv inn admin-kode">
+        </div>
+        <button id="admin-login-btn" class="btn-primary">Logg inn</button>
+        <p style="font-size:0.85rem;color:#6b7280;margin-top:8px">Demo-passord: <code>loenga2024</code></p>
+        <div id="admin-login-error" style="color:#dc2626;margin-top:8px;font-size:0.9rem"></div>
+      </div>
+
+      <div id="admin-panel" style="display:none">
+        <h2>Administrasjon</h2>
+
+        <div class="form-group">
+          <label>Måned og år</label>
+          <div class="row">
+            <select id="adm-maaned"></select>
+            <input id="adm-aar" type="number" min="2024" max="2035">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="adm-faktura">Fakturabeløp (kr)</label>
+          <input id="adm-faktura" type="number" min="0" step="0.01" placeholder="0">
+        </div>
+
+        <button id="adm-calc-btn" class="btn-primary">Beregn fordeling</button>
+        <div id="adm-calc-feedback" class="feedback"></div>
+
+        <div id="adm-result" style="margin-top:24px"></div>
+
+        <div id="adm-email-section" style="display:none;margin-top:28px">
+          <hr class="divider">
+          <h3>Send betalingskrav</h3>
+          <p style="font-size:0.88rem;color:#6b7280;margin-bottom:12px">
+            I demo-modus vises ferdig e-posttekst du kan kopiere.
+            Ved opplasting til Firebase kobles dette til ekte e-postutsending.
+          </p>
+          <div id="adm-email-table"></div>
+          <div style="display:flex;gap:10px;margin-top:14px;flex-wrap:wrap">
+            <button id="adm-send-btn" class="btn-primary" style="flex:1;min-width:160px">
+              Vis alle e-poster
+            </button>
+          </div>
+
+          <hr class="divider">
+          <h3>Del oversikt på Messenger</h3>
+          <p style="font-size:0.88rem;color:#6b7280;margin-bottom:12px">
+            Last ned bildet og del det i gruppa, eller kopier teksten og lim inn.
+          </p>
+          <div style="display:flex;gap:10px;flex-wrap:wrap">
+            <button id="adm-bilde-btn" class="btn-secondary" style="flex:1;min-width:160px">
+              📷 Last ned bilde
+            </button>
+            <button id="adm-kopier-btn" class="btn-secondary" style="flex:1;min-width:160px">
+              📋 Kopier tekst
+            </button>
+          </div>
+          <div id="adm-del-feedback" class="feedback"></div>
+          <div id="adm-send-feedback" class="feedback"></div>
+        </div>
+      </div>
+
+    </section>
+  </main>
+
+  <!-- E-postmodal -->
+  <div class="modal-backdrop" id="email-modal">
+    <div class="modal">
+      <div class="modal-header">
+        <h3>E-poster – klar til utsending</h3>
+        <button class="modal-close" id="modal-close">×</button>
+      </div>
+      <div id="modal-body"></div>
+    </div>
+  </div>
+
+<script>
+'use strict';
+
+// ---- Konfig ----
+const BRENNERE      = ["Marte","Mingshu","Olia","Silja"];
+const KERAMIKERE    = ["Maia","Marte","Martine","Mingshu","Olia","Silja","Victoria"];
+const MAANEDER      = ["Januar","Februar","Mars","April","Mai","Juni","Juli","August","September","Oktober","November","Desember"];
+const ADMIN_PASSORD = "loenga2024";
+const BETALING      = { navn: "Marte Sørensen", konto: "9802.62.01039", vipps: "91715753" };
+
+// ---- localStorage ----
+function hentAlle()            { return JSON.parse(localStorage.getItem("loenga_brenninger") || "[]"); }
+function lagreAlle(data)       { localStorage.setItem("loenga_brenninger", JSON.stringify(data)); }
+function leggTil(b)            { const a = hentAlle(); a.push({...b, id: Date.now().toString()}); lagreAlle(a); }
+function slett(id)             { lagreAlle(hentAlle().filter(b => b.id !== id)); }
+function slettAlle()           { localStorage.removeItem("loenga_brenninger"); }
+function hentForMaaned(m, y)   { return hentAlle().filter(b => b.maaned === m && b.aar === y); }
+
+// ---- Hjelp ----
+const $   = id => document.getElementById(id);
+const now = new Date();
+
+function kr(n) {
+  return new Intl.NumberFormat("nb-NO", { maximumFractionDigits: 0 }).format(Math.round(n)) + " kr";
+}
+
+function showFeedback(id, type, msg, ms = 5000) {
+  const el = $(id);
+  el.textContent = msg;
+  el.className = `feedback show ${type}`;
+  if (ms > 0) setTimeout(() => { el.className = "feedback"; }, ms);
+}
+
+function populerMaaned(id, valgt = now.getMonth() + 1) {
+  const sel = $(id);
+  sel.innerHTML = "";
+  MAANEDER.forEach((m, i) => {
+    const o = document.createElement("option");
+    o.value = i + 1; o.textContent = m;
+    if (i + 1 === valgt) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function populerNavn(id) {
+  const sel = $(id);
+  sel.innerHTML = '<option value="">Velg navn…</option>';
+  BRENNERE.forEach(n => {
+    const o = document.createElement("option");
+    o.value = n; o.textContent = n;
+    sel.appendChild(o);
+  });
+}
+
+// ---- Tabs ----
+document.querySelectorAll(".tab-btn").forEach(btn => {
+  btn.addEventListener("click", () => {
+    document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+    document.querySelectorAll(".tab-content").forEach(t => t.classList.remove("active"));
+    btn.classList.add("active");
+    $(`tab-${btn.dataset.tab}`).classList.add("active");
+  });
+});
+
+// ================================================================
+// FANE 1 – Registrer
+// ================================================================
+function initRegister() {
+  populerNavn("reg-navn");
+  populerMaaned("reg-maaned");
+  $("reg-aar").value = now.getFullYear();
+
+  $("reg-btn").addEventListener("click", () => {
+    const navn   = $("reg-navn").value;
+    const type   = document.querySelector('input[name="brenning"]:checked')?.value;
+    const maaned = parseInt($("reg-maaned").value);
+    const aar    = parseInt($("reg-aar").value);
+
+    if (!navn)  return showFeedback("reg-feedback", "error", "Velg navn.");
+    if (!type)  return showFeedback("reg-feedback", "error", "Velg type brenning.");
+
+    leggTil({ navn, type, maaned, aar });
+    showFeedback("reg-feedback", "success",
+      `✓ ${type === "raa" ? "Råbrann" : "Glasurbrann"} registrert for ${navn} – ${MAANEDER[maaned-1]} ${aar}`);
+    $("reg-navn").value = "";
+    document.querySelectorAll('input[name="brenning"]').forEach(r => r.checked = false);
+    visRegListe();
+  });
+
+  $("slett-alle-btn").addEventListener("click", () => {
+    if (confirm("Slett alle demo-data?")) { slettAlle(); visRegListe(); }
+  });
+
+  visRegListe();
+}
+
+function visRegListe() {
+  const alle = hentAlle().slice().reverse().slice(0, 20); // siste 20
+  const wrap = $("reg-list");
+  if (!alle.length) {
+    wrap.innerHTML = `<p style="padding:12px;color:#6b7280;font-size:0.9rem">Ingen brenninger registrert ennå.</p>`;
+    return;
+  }
+  wrap.innerHTML = alle.map(b => `
+    <div class="brenning-item">
+      <span>
+        <strong>${b.navn}</strong> –
+        ${b.type === "raa" ? "Råbrann" : "Glasurbrann"} –
+        ${MAANEDER[b.maaned-1]} ${b.aar}
+      </span>
+      <button class="delete-item" data-id="${b.id}" title="Slett">✕</button>
+    </div>`).join("");
+
+  wrap.querySelectorAll(".delete-item").forEach(btn => {
+    btn.addEventListener("click", () => { slett(btn.dataset.id); visRegListe(); });
+  });
+}
+
+// ================================================================
+// FANE 2 – Oversikt
+// ================================================================
+function initOversikt() {
+  populerMaaned("ov-maaned");
+  $("ov-aar").value = now.getFullYear();
+  $("ov-load-btn").addEventListener("click", visOversikt);
+  visOversikt();
+}
+
+function visOversikt() {
+  const maaned = parseInt($("ov-maaned").value);
+  const aar    = parseInt($("ov-aar").value);
+  const liste  = hentForMaaned(maaned, aar);
+  const wrap   = $("ov-table-container");
+
+  const counts = {};
+  BRENNERE.forEach(n => counts[n] = { raa: 0, glasur: 0 });
+  liste.forEach(b => { if (counts[b.navn]) counts[b.navn][b.type]++; });
+
+  let tRaa = 0, tGlasur = 0;
+  const rows = BRENNERE.map(navn => {
+    const { raa, glasur } = counts[navn];
+    tRaa += raa; tGlasur += glasur;
+    return `<tr><td>${navn}</td><td class="num">${raa}</td><td class="num">${glasur}</td><td class="num">${raa+glasur}</td></tr>`;
+  }).join("");
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Navn</th><th class="num">Råbrann</th><th class="num">Glasurbrann</th><th class="num">Totalt</th>
+        </tr></thead>
+        <tbody>
+          ${rows}
+          <tr class="total-row">
+            <td>Totalt</td>
+            <td class="num">${tRaa}</td>
+            <td class="num">${tGlasur}</td>
+            <td class="num">${tRaa+tGlasur}</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+    ${!liste.length ? `<p style="margin-top:12px;color:#6b7280;font-size:0.9rem">
+      Ingen brenninger for ${MAANEDER[maaned-1]} ${aar}.</p>` : ""}`;
+}
+
+// ================================================================
+// FANE 3 – Admin
+// ================================================================
+let adminInn = false;
+let sisteBeregning = null;
+
+function initAdmin() {
+  populerMaaned("adm-maaned");
+  $("adm-aar").value = now.getFullYear();
+
+  $("admin-login-btn").addEventListener("click", adminLogin);
+  $("admin-pw").addEventListener("keydown", e => { if (e.key === "Enter") adminLogin(); });
+  $("adm-calc-btn").addEventListener("click", adminBeregn);
+  $("adm-send-btn").addEventListener("click", visEmailModal);
+  $("modal-close").addEventListener("click", () => $("email-modal").classList.remove("open"));
+  $("email-modal").addEventListener("click", e => {
+    if (e.target === $("email-modal")) $("email-modal").classList.remove("open");
+  });
+}
+
+function adminLogin() {
+  if ($("admin-pw").value === ADMIN_PASSORD) {
+    adminInn = true;
+    $("admin-login").style.display = "none";
+    $("admin-panel").style.display = "block";
+  } else {
+    $("admin-login-error").textContent = "Feil passord.";
+  }
+}
+
+function adminBeregn() {
+  const maaned     = parseInt($("adm-maaned").value);
+  const aar        = parseInt($("adm-aar").value);
+  const faktura    = parseFloat($("adm-faktura").value) || 0;
+  const maanedNavn = MAANEDER[maaned - 1];
+
+  if (!faktura || faktura <= 0)
+    return showFeedback("adm-calc-feedback", "error", "Angi et gyldig fakturabeløp.");
+
+  const liste = hentForMaaned(maaned, aar);
+
+  const counts = {};
+  BRENNERE.forEach(n => counts[n] = { raa: 0, glasur: 0 });
+  liste.forEach(b => { if (counts[b.navn]) counts[b.navn][b.type]++; });
+
+  const baseRaa    = faktura * 0.055;
+  const baseGlasur = faktura * 0.065;
+  let totalBrenning = 0;
+
+  const persons = KERAMIKERE.map(navn => {
+    const { raa, glasur } = counts[navn] || { raa: 0, glasur: 0 };
+    const kost = raa * baseRaa + glasur * baseGlasur;
+    totalBrenning += kost;
+    return { navn, raa, glasur, kost };
+  });
+
+  const rest     = faktura - totalBrenning;
+  const likAndel = rest / KERAMIKERE.length; // deles likt på alle 7
+
+  sisteBeregning = { persons, faktura, maaned, aar, maanedNavn, baseRaa, baseGlasur, totalBrenning, rest, likAndel };
+
+  // Vis resultat
+  $("adm-result").innerHTML = `
+    <div class="summary-box">
+      <strong>Fakturabeløp:</strong> ${kr(faktura)}<br>
+      <strong>Råbrann per brann:</strong> ${kr(baseRaa)} (5,5 %)<br>
+      <strong>Glasurbrann per brann:</strong> ${kr(baseGlasur)} (6,5 %)<br>
+      <strong>Sum brenningskostnader:</strong> ${kr(totalBrenning)}<br>
+      <strong>Resterende delt likt (${KERAMIKERE.length} personer):</strong>
+      ${kr(rest)} → <strong>${kr(likAndel)}</strong> per person
+    </div>
+    ${persons.map(p => {
+      const totalt = p.kost + likAndel;
+      return `<div class="card">
+        <div class="card-name">${p.navn}</div>
+        <div class="card-details">
+          Råbrann: ${p.raa} × ${kr(baseRaa)} = ${kr(p.raa * baseRaa)}<br>
+          Glasurbrann: ${p.glasur} × ${kr(baseGlasur)} = ${kr(p.glasur * baseGlasur)}<br>
+          Brenningskostnad: ${kr(p.kost)} · Lik andel: ${kr(likAndel)}
+        </div>
+        <div class="card-total">${kr(totalt)}</div>
+      </div>`;
+    }).join("")}`;
+
+  // Vis e-postoversikt
+  const { persons: ps, likAndel: la } = sisteBeregning;
+  $("adm-email-table").innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr><th>Navn</th><th class="num">Beløp</th></tr></thead>
+        <tbody>
+          ${ps.map(p => `<tr>
+            <td>${p.navn}</td>
+            <td class="num">${kr(p.kost + la)}</td>
+          </tr>`).join("")}
+        </tbody>
+      </table>
+    </div>`;
+
+  $("adm-email-section").style.display = "block";
+}
+
+function visEmailModal() {
+  if (!sisteBeregning) return;
+  const { persons, likAndel, maanedNavn, aar } = sisteBeregning;
+
+  $("modal-body").innerHTML = persons.map(p => {
+    const totalt = p.kost + likAndel;
+    const tekst = [
+      `Hei ${p.navn},`,
+      ``,
+      `Her er din strøm-andel for ${maanedNavn} ${aar}.`,
+      ``,
+      `Brenninger:`,
+      `  Råbrann:     ${p.raa} stk`,
+      `  Glasurbrann: ${p.glasur} stk`,
+      ``,
+      `Kostnad brenning:  ${kr(p.kost)}`,
+      `Lik andel:         ${kr(likAndel)}`,
+      `─────────────────────────────────`,
+      `Totalt å betale:   ${kr(totalt)}`,
+      ``,
+      `Betal til: ${BETALING.navn}`,
+      `Kontonummer: ${BETALING.konto}`,
+      `Vipps: ${BETALING.vipps}`,
+      ``,
+      `Hilsen Loenga Samvirke`
+    ].join("\n");
+
+    const eid = `email-${p.navn.replace(/\s/g,"-")}`;
+    return `<div class="email-card">
+      <div class="email-card-header">
+        <span>${p.navn} — ${kr(totalt)}</span>
+        <button class="copy-btn" onclick="kopier('${eid}', this)">Kopier</button>
+      </div>
+      <div class="email-body" id="${eid}">${tekst}</div>
+    </div>`;
+  }).join("");
+
+  $("email-modal").classList.add("open");
+}
+
+function kopier(id, btn) {
+  const tekst = $(id).textContent;
+  navigator.clipboard.writeText(tekst).then(() => {
+    btn.textContent = "✓ Kopiert";
+    setTimeout(() => btn.textContent = "Kopier", 2000);
+  });
+}
+
+// ================================================================
+// DEL PÅ MESSENGER
+// ================================================================
+function lastNedBilde() {
+  if (!sisteBeregning) return;
+  const { persons, likAndel, maanedNavn, aar } = sisteBeregning;
+
+  const W = 560, PAD = 28;
+  const HEADER_H = 76;
+  const ROW_H = 48;
+  const FOOTER_H = 72;
+  const H = HEADER_H + 32 + ROW_H * persons.length + FOOTER_H;
+
+  const c = document.createElement('canvas');
+  c.width = W; c.height = H;
+  const ctx = c.getContext('2d');
+
+  // Hvit bakgrunn
+  ctx.fillStyle = '#ffffff';
+  ctx.fillRect(0, 0, W, H);
+
+  // Grønn header
+  ctx.fillStyle = '#2c5f2e';
+  ctx.fillRect(0, 0, W, HEADER_H);
+
+  ctx.fillStyle = '#ffffff';
+  ctx.font = 'bold 20px Arial';
+  ctx.fillText(`Strøm Loenga – ${maanedNavn} ${aar}`, PAD, 34);
+  ctx.font = '13px Arial';
+  ctx.fillStyle = 'rgba(255,255,255,0.75)';
+  ctx.fillText('Fordeling av strømkostnader', PAD, 56);
+
+  // Kolonnetitler
+  let y = HEADER_H + 22;
+  ctx.font = '12px Arial';
+  ctx.fillStyle = '#9ca3af';
+  ctx.fillText('NAVN', PAD, y);
+  ctx.fillText('RÅBRANN', 260, y);
+  ctx.fillText('GLASURBRANN', 330, y);
+  const totLabel = 'TOTALT';
+  ctx.fillText(totLabel, W - PAD - ctx.measureText(totLabel).width, y);
+
+  y += 8;
+  ctx.fillStyle = '#e5e7eb';
+  ctx.fillRect(PAD, y, W - PAD * 2, 1);
+  y += ROW_H * 0.35;
+
+  // Rader
+  persons.forEach((p, i) => {
+    if (i % 2 === 0) {
+      ctx.fillStyle = '#f9fafb';
+      ctx.fillRect(0, y - 2, W, ROW_H - 2);
+    }
+    const totalt = p.kost + likAndel;
+    const totStr = kr(totalt);
+
+    ctx.fillStyle = '#111827';
+    ctx.font = 'bold 15px Arial';
+    ctx.fillText(p.navn, PAD, y + 20);
+
+    ctx.font = '15px Arial';
+    ctx.fillStyle = '#374151';
+    ctx.fillText(String(p.raa),    275, y + 20);
+    ctx.fillText(String(p.glasur), 355, y + 20);
+
+    ctx.fillStyle = '#2c5f2e';
+    ctx.font = 'bold 15px Arial';
+    ctx.fillText(totStr, W - PAD - ctx.measureText(totStr).width, y + 20);
+
+    y += ROW_H;
+  });
+
+  // Footer
+  ctx.fillStyle = '#f3f4f6';
+  ctx.fillRect(0, y + 8, W, FOOTER_H + 4);
+  ctx.fillStyle = '#6b7280';
+  ctx.font = '13px Arial';
+  ctx.fillText(`Betal til: ${BETALING.navn}`, PAD, y + 30);
+  ctx.fillText(`Kontonummer: ${BETALING.konto}   ·   Vipps: ${BETALING.vipps}`, PAD, y + 50);
+
+  // Last ned
+  const a = document.createElement('a');
+  a.href = c.toDataURL('image/png');
+  a.download = `strom_loenga_${maanedNavn}_${aar}.png`.toLowerCase().replace(/\s+/g, '_');
+  a.click();
+
+  showFeedback('adm-del-feedback', 'success', '✓ Bilde lastet ned – del det i Messenger-gruppa!');
+}
+
+function kopierDeleTekst() {
+  if (!sisteBeregning) return;
+  const { persons, likAndel, maanedNavn, aar } = sisteBeregning;
+
+  const linjer = [
+    `⚡ Strøm Loenga – ${maanedNavn} ${aar}`,
+    ``,
+    ...persons.map(p => {
+      const totalt = p.kost + likAndel;
+      return `${p.navn}: ${kr(totalt)}`;
+    }),
+    ``,
+    `Betal til: ${BETALING.navn}`,
+    `Konto: ${BETALING.konto}`,
+    `Vipps: ${BETALING.vipps}`
+  ];
+
+  navigator.clipboard.writeText(linjer.join('\n')).then(() => {
+    showFeedback('adm-del-feedback', 'success', '✓ Tekst kopiert – lim inn i Messenger-gruppa!');
+  });
+}
+
+// ---- Init ----
+initRegister();
+initOversikt();
+initAdmin();
+
+document.getElementById('adm-bilde-btn')?.addEventListener('click', lastNedBilde);
+document.getElementById('adm-kopier-btn')?.addEventListener('click', kopierDeleTekst);
+</script>
+
+</body>
+</html>

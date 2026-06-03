@@ -4,7 +4,7 @@
 // ============================================================
 
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
-import { getFirestore, collection, addDoc, deleteDoc, doc, getDoc, setDoc, query, where, getDocs, Timestamp }
+import { getFirestore, collection, addDoc, deleteDoc, doc, getDoc, setDoc, query, where, orderBy, limit, getDocs, Timestamp }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChanged }
   from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
@@ -43,7 +43,10 @@ function firebaseKrever(id) {
 }
 
 // ---- Konstanter ----
-const KERAMIKERE = ["Maia", "Marte", "Martine", "Mingshu", "Olga", "Silja", "Victoria"];
+// Kun disse fire bruker ovnen og kan registrere brenninger
+const BRENNERE = ["Marte", "Mingshu", "Olia", "Silja"];
+// Alle syv deler restbeløpet likt
+const ALLE     = ["Maia", "Marte", "Martine", "Mingshu", "Olia", "Silja", "Victoria"];
 const MAANEDER   = [
   "Januar","Februar","Mars","April","Mai","Juni",
   "Juli","August","September","Oktober","November","Desember"
@@ -81,7 +84,7 @@ function populateMonthSelect(id, selected = now.getMonth() + 1) {
 function populateNameSelect(id) {
   const sel = $(id);
   sel.innerHTML = '<option value="">Velg navn...</option>';
-  KERAMIKERE.forEach(n => {
+  BRENNERE.forEach(n => {
     const opt = document.createElement("option");
     opt.value = n;
     opt.textContent = n;
@@ -108,6 +111,7 @@ function initRegister() {
   populateNameSelect("reg-navn");
   populateMonthSelect("reg-maaned");
   $("reg-aar").value = now.getFullYear();
+  visNyesteRegistreringer();
 
   $("reg-btn").addEventListener("click", async () => {
     const navn  = $("reg-navn").value.trim();
@@ -137,6 +141,7 @@ function initRegister() {
       // Reset form
       $("reg-navn").value = "";
       document.querySelectorAll('input[name="brenning"]').forEach(r => r.checked = false);
+      visNyesteRegistreringer();
     } catch (e) {
       console.error("Firestore-feil:", e);
       showFeedback("reg-feedback", "error", "Feil ved lagring. Sjekk tilkobling og Firebase-oppsett.");
@@ -145,6 +150,39 @@ function initRegister() {
       btn.textContent = "Legg til brenning";
     }
   });
+}
+
+async function visNyesteRegistreringer() {
+  const wrap = $("reg-siste-liste");
+  if (!wrap || !firebaseOk) return;
+
+  try {
+    const snap = await getDocs(
+      query(collection(db, "brenninger"),
+        orderBy("opprettet", "desc"),
+        limit(10))
+    );
+
+    if (snap.size === 0) {
+      wrap.innerHTML = `<p style="color:#6b7280;font-size:0.9rem;padding:10px">Ingen brenninger registrert ennå.</p>`;
+      return;
+    }
+
+    const rader = [];
+    snap.forEach(d => rader.push(d.data()));
+
+    wrap.innerHTML = rader.map(b => `
+      <div class="brenning-item">
+        <strong>${b.navn}</strong>
+        <span style="color:#6b7280">–</span>
+        ${b.type === "raa" ? "Råbrann" : "Glasurbrann"}
+        <span style="color:#6b7280;font-size:0.85rem;margin-left:auto">
+          ${MAANEDER[b.maaned - 1]} ${b.aar}
+        </span>
+      </div>`).join("");
+  } catch (e) {
+    console.error("Kunne ikke hente siste registreringer:", e);
+  }
 }
 
 // ============================================================
@@ -177,16 +215,16 @@ async function loadOversikt() {
         where("aar",    "==", aar))
     );
 
-    // Telle opp per person
+    // Telle opp per brenner
     const counts = {};
-    KERAMIKERE.forEach(n => counts[n] = { raa: 0, glasur: 0 });
+    BRENNERE.forEach(n => counts[n] = { raa: 0, glasur: 0 });
     snap.forEach(doc => {
       const d = doc.data();
       if (counts[d.navn]) counts[d.navn][d.type]++;
     });
 
     let totRaa = 0, totGlasur = 0;
-    let rows = KERAMIKERE.map(navn => {
+    let rows = BRENNERE.map(navn => {
       const { raa, glasur } = counts[navn];
       totRaa    += raa;
       totGlasur += glasur;
@@ -609,27 +647,29 @@ async function adminBeregn() {
         where("aar",    "==", aar))
     );
 
+    // Tell brenninger kun for de fire som bruker ovnen
     const counts = {};
-    KERAMIKERE.forEach(n => counts[n] = { raa: 0, glasur: 0 });
+    BRENNERE.forEach(n => counts[n] = { raa: 0, glasur: 0 });
     snap.forEach(doc => {
       const d = doc.data();
       if (counts[d.navn]) counts[d.navn][d.type]++;
     });
 
-    // ---- Beregningslogikk (identisk med original HTML) ----
-    const baseRaa    = faktura * 0.055; // kr per råbrann
-    const baseGlasur = faktura * 0.065; // kr per glasurbrann
+    // ---- Beregningslogikk ----
+    const baseRaa    = faktura * 0.055;
+    const baseGlasur = faktura * 0.065;
 
     let totalBrenning = 0;
-    const persons = KERAMIKERE.map(navn => {
-      const { raa, glasur } = counts[navn];
+    // Bygg persons-liste for alle 7 (brennere får brenningskostnad, andre får 0)
+    const persons = ALLE.map(navn => {
+      const { raa, glasur } = counts[navn] || { raa: 0, glasur: 0 };
       const kost = raa * baseRaa + glasur * baseGlasur;
       totalBrenning += kost;
       return { navn, raa, glasur, kost };
     });
 
     const rest      = faktura - totalBrenning;
-    const likAndel  = rest / KERAMIKERE.length;
+    const likAndel  = rest / ALLE.length; // deles likt på alle 7
 
     // Lagre for e-postutsending
     lastCalc = { persons, faktura, maaned, aar, maanedNavn, baseRaa, baseGlasur, totalBrenning, rest, likAndel };
@@ -642,7 +682,7 @@ async function adminBeregn() {
         <strong>Råbrann per brann:</strong> ${kr(baseRaa)} (5,5 %)<br>
         <strong>Glasurbrann per brann:</strong> ${kr(baseGlasur)} (6,5 %)<br>
         <strong>Sum brenningskostnader:</strong> ${kr(totalBrenning)}<br>
-        <strong>Resterende delt likt (${KERAMIKERE.length} personer):</strong>
+        <strong>Resterende delt likt (${ALLE.length} personer):</strong>
         ${kr(rest)} → <strong>${kr(likAndel)}</strong> per person
       </div>
       ${persons.map(p => {
