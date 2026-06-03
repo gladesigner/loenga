@@ -5,7 +5,7 @@
 // 1. Firebase-konfigurasjon
 //    Finn disse i Firebase Console → Prosjektinnstillinger → Dine apper
 // Your web app's Firebase configuration
-const firebaseConfig = {
+export const firebaseConfig = {
   apiKey: "AIzaSyChIsUHiywTJQhZSeM5-TCWyfd7qltwpFg",
   authDomain: "loenga.firebaseapp.com",
   projectId: "loenga",
