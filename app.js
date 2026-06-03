@@ -483,6 +483,8 @@ async function hentOgFyllFaktura(maanedId, aarId, inputId) {
 // ================================================================
 // FAKTURAOVERSIKT – alle måneder med inntastingsfelt
 // ================================================================
+let fakturaFremover = 2; // antall måneder frem i tid som vises
+
 async function initFakturaoversikt() {
   const wrap = $("faktura-oversikt-liste");
   if (!wrap) return;
@@ -494,10 +496,10 @@ async function initFakturaoversikt() {
     snap.forEach(d => { lagrede[månedKey(d.data().maaned, d.data().aar)] = d.data().faktura; });
   } catch (e) { console.warn(e); }
 
-  // Generer måneder fra jan 2025 til 2 måneder frem i tid
+  // Generer måneder fra jan 2026 til N måneder frem i tid
   const mnd = [];
-  const slutt = new Date(now.getFullYear(), now.getMonth() + 2, 1);
-  let   d    = new Date(2025, 0, 1);
+  const slutt = new Date(now.getFullYear(), now.getMonth() + fakturaFremover, 1);
+  let   d    = new Date(2026, 0, 1);
   while (d <= slutt) {
     mnd.push({ maaned: d.getMonth() + 1, aar: d.getFullYear() });
     d.setMonth(d.getMonth() + 1);
@@ -538,7 +540,13 @@ async function initFakturaoversikt() {
         </tbody>
       </table>
     </div>
-    <div id="fakt-feedback" class="feedback" style="margin-top:8px"></div>`;
+    <div id="fakt-feedback" class="feedback" style="margin-top:8px"></div>
+    <button onclick="leggTilNesteMaaned()"
+      style="margin-top:10px;background:none;border:1.5px dashed var(--border);
+             color:var(--text-muted);padding:8px 16px;border-radius:8px;
+             cursor:pointer;font-size:0.9rem;width:100%">
+      + Legg til neste måned
+    </button>`;
 }
 
 async function lagreFakturaRad(key, maaned, aar) {
@@ -572,6 +580,12 @@ async function lagreFakturaRad(key, maaned, aar) {
   }
 }
 window.lagreFakturaRad = lagreFakturaRad;
+
+function leggTilNesteMaaned() {
+  fakturaFremover++;
+  initFakturaoversikt();
+}
+window.leggTilNesteMaaned = leggTilNesteMaaned;
 
 // ================================================================
 // MÅNEDSKONFIGURASJON – hvem er med denne måneden?
