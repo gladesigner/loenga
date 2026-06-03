@@ -187,29 +187,33 @@
         <hr class="divider" style="margin-top: 28px">
         <h3>Deltakere per måned</h3>
         <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px">
-          Definer hvem som er med for valgt måned. Lagres i Firebase.
-          Uten konfigurasjon brukes standardlisten.
+          Velg måned og hent listen. Hak av hvem som er med og hvem som bruker ovnen.
         </p>
-        <button id="adm-last-konfig-btn" class="btn-secondary">
-          Last inn konfigurasjon for valgt måned
-        </button>
-        <div id="adm-konfig-panel" style="display: none; margin-top: 16px">
-          <div style="display: flex; gap: 24px; flex-wrap: wrap">
-            <div style="flex: 1; min-width: 180px">
-              <p style="font-weight: 600; margin-bottom: 10px">Alle deltakere
-                <span style="font-weight:400;font-size:0.85rem;color:var(--text-muted)"> – deler likt</span>
-              </p>
-              <div id="konfig-alle"></div>
-            </div>
-            <div style="flex: 1; min-width: 180px">
-              <p style="font-weight: 600; margin-bottom: 10px">Ovnsbrukere
-                <span style="font-weight:400;font-size:0.85rem;color:var(--text-muted)"> – kan registrere brenninger</span>
-              </p>
-              <div id="konfig-brennere"></div>
-            </div>
+        <div class="row" style="margin-bottom: 12px">
+          <select id="konfig-maaned" style="flex:2"></select>
+          <input id="konfig-aar" type="number" min="2024" max="2035" style="flex:1">
+          <button id="adm-last-konfig-btn" class="btn-secondary" style="white-space:nowrap">Hent</button>
+        </div>
+
+        <div id="adm-konfig-panel" style="display: none">
+          <div class="table-wrap">
+            <table>
+              <thead>
+                <tr>
+                  <th>Navn</th>
+                  <th style="text-align:center">Er med<br>
+                    <span style="font-weight:400;font-size:0.78rem;opacity:0.85">deler likt</span>
+                  </th>
+                  <th style="text-align:center">Bruker ovn<br>
+                    <span style="font-weight:400;font-size:0.78rem;opacity:0.85">kan registrere</span>
+                  </th>
+                </tr>
+              </thead>
+              <tbody id="konfig-tbody"></tbody>
+            </table>
           </div>
-          <button id="adm-lagre-konfig-btn" class="btn-primary" style="margin-top: 14px">
-            Lagre konfigurasjon
+          <button id="adm-lagre-konfig-btn" class="btn-primary" style="margin-top: 12px">
+            Lagre
           </button>
           <div id="adm-konfig-feedback" class="feedback"></div>
         </div>

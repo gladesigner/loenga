@@ -217,7 +217,7 @@ async function loadOversikt() {
     return;
   }
 
-  wrap.innerHTML = "<p style='color:#666'>Henter data…</p>";
+  wrap.innerHTML = "<p style='color:#666'>Henter…</p>";
 
   try {
     const snap = await getDocs(
@@ -226,17 +226,17 @@ async function loadOversikt() {
         where("aar",    "==", aar))
     );
 
-    // Telle opp per brenner
+    const konfig = await hentMånedskonfig(maaned, aar);
     const counts = {};
-    BRENNERE.forEach(n => counts[n] = { raa: 0, glasur: 0 });
+    konfig.brennere.forEach(n => counts[n] = { raa: 0, glasur: 0 });
     snap.forEach(doc => {
       const d = doc.data();
       if (counts[d.navn]) counts[d.navn][d.type]++;
     });
 
     let totRaa = 0, totGlasur = 0;
-    let rows = BRENNERE.map(navn => {
-      const { raa, glasur } = counts[navn];
+    let rows = konfig.brennere.map(navn => {
+      const { raa, glasur } = counts[navn] || { raa: 0, glasur: 0 };
       totRaa    += raa;
       totGlasur += glasur;
       return `<tr>
@@ -285,6 +285,8 @@ let lastCalc = null;
 function initAdmin() {
   populateMonthSelect("adm-maaned");
   $("adm-aar").value = now.getFullYear();
+  populateMonthSelect("konfig-maaned");
+  $("konfig-aar").value = now.getFullYear();
 
   $("adm-calc-btn")?.addEventListener("click", adminBeregn);
   $("adm-aapne-epost-btn")?.addEventListener("click", aapneEpostklient);
@@ -473,35 +475,59 @@ async function hentMånedskonfig(maaned, aar) {
 }
 
 async function adminLastKonfig() {
-  const maaned    = parseInt($("adm-maaned").value);
-  const aar       = parseInt($("adm-aar").value);
+  const maaned = parseInt($("konfig-maaned").value);
+  const aar    = parseInt($("konfig-aar").value);
+
   const [konfig, alle] = await Promise.all([
     hentMånedskonfig(maaned, aar),
     hentAllePersoner()
   ]);
 
-  ["alle", "brennere"].forEach(gruppe => {
-    const wrap = $(`konfig-${gruppe}`);
-    wrap.innerHTML = alle.map(navn => `
-      <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
-        <input type="checkbox" value="${navn}"
-          ${konfig[gruppe].includes(navn) ? "checked" : ""}
-          style="width:16px;height:16px;accent-color:var(--primary)">
-        <span>${navn}</span>
-      </label>`).join("");
+  const tbody = $("konfig-tbody");
+  tbody.innerHTML = alle.map(navn => {
+    const erMed     = konfig.alle.includes(navn);
+    const brukerOvn = konfig.brennere.includes(navn);
+    return `<tr>
+      <td style="font-weight:600">${navn}</td>
+      <td style="text-align:center">
+        <input type="checkbox" class="cb-alle" data-navn="${navn}"
+          ${erMed ? "checked" : ""}
+          style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer">
+      </td>
+      <td style="text-align:center">
+        <input type="checkbox" class="cb-brennere" data-navn="${navn}"
+          ${brukerOvn ? "checked" : ""}
+          style="width:18px;height:18px;accent-color:var(--primary);cursor:pointer">
+      </td>
+    </tr>`;
+  }).join("");
+
+  // Haker av «Er med» automatisk når «Bruker ovn» krysses av
+  tbody.querySelectorAll(".cb-brennere").forEach(cb => {
+    cb.addEventListener("change", () => {
+      if (cb.checked) {
+        tbody.querySelector(`.cb-alle[data-navn="${cb.dataset.navn}"]`).checked = true;
+      }
+    });
+  });
+  // Fjerner «Bruker ovn» automatisk når «Er med» fjernes
+  tbody.querySelectorAll(".cb-alle").forEach(cb => {
+    cb.addEventListener("change", () => {
+      if (!cb.checked) {
+        tbody.querySelector(`.cb-brennere[data-navn="${cb.dataset.navn}"]`).checked = false;
+      }
+    });
   });
 
   $("adm-konfig-panel").style.display = "block";
+  $("adm-lagre-konfig-btn").textContent = `Lagre for ${MAANEDER[maaned - 1]} ${aar}`;
 }
 
 async function adminLagreKonfig() {
-  const maaned   = parseInt($("adm-maaned").value);
-  const aar      = parseInt($("adm-aar").value);
-  const hentValgte = id =>
-    [...document.querySelectorAll(`#${id} input:checked`)].map(cb => cb.value);
-
-  const alle     = hentValgte("konfig-alle");
-  const brennere = hentValgte("konfig-brennere");
+  const maaned   = parseInt($("konfig-maaned").value);
+  const aar      = parseInt($("konfig-aar").value);
+  const alle     = [...document.querySelectorAll(".cb-alle:checked")].map(cb => cb.dataset.navn);
+  const brennere = [...document.querySelectorAll(".cb-brennere:checked")].map(cb => cb.dataset.navn);
 
   if (!alle.length) {
     return showFeedback("adm-konfig-feedback", "error", "Velg minst én deltaker.");
@@ -511,8 +537,7 @@ async function adminLagreKonfig() {
     await setDoc(doc(db, "manedskonfig", månedKey(maaned, aar)),
       { alle, brennere, oppdatert: Timestamp.now() });
     showFeedback("adm-konfig-feedback", "success",
-      `✓ Konfigurasjon lagret for ${MAANEDER[maaned-1]} ${aar} (${alle.length} deltakere, ${brennere.length} ovnsbrukere)`);
-    // Oppdater registreringsdropdown med ny konfig
+      `✓ ${MAANEDER[maaned-1]} ${aar}: ${alle.length} deltakere, ${brennere.length} ovnsbrukere`);
     oppdaterNavnDropdown();
   } catch (e) {
     showFeedback("adm-konfig-feedback", "error", "Feil ved lagring.");
