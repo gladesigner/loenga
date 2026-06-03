@@ -368,6 +368,7 @@ async function visAdminPanel(email) {
   const el = $("mottakere-input");
   if (el) el.value = mottakere;
   visPersonliste();
+  initFakturaoversikt();
 }
 
 // ================================================================
@@ -462,6 +463,99 @@ async function visPersonliste(liste) {
                padding:2px 6px;border-radius:4px" title="Fjern">✕</button>
     </div>`).join("");
 }
+
+// ================================================================
+// FAKTURAOVERSIKT – alle måneder med inntastingsfelt
+// ================================================================
+async function initFakturaoversikt() {
+  const wrap = $("faktura-oversikt-liste");
+  if (!wrap) return;
+
+  // Hent lagrede fakturaer
+  const lagrede = {};
+  try {
+    const snap = await getDocs(collection(db, "fakturaer"));
+    snap.forEach(d => { lagrede[månedKey(d.data().maaned, d.data().aar)] = d.data().faktura; });
+  } catch (e) { console.warn(e); }
+
+  // Generer måneder fra jan 2025 til 2 måneder frem i tid
+  const mnd = [];
+  const slutt = new Date(now.getFullYear(), now.getMonth() + 2, 1);
+  let   d    = new Date(2025, 0, 1);
+  while (d <= slutt) {
+    mnd.push({ maaned: d.getMonth() + 1, aar: d.getFullYear() });
+    d.setMonth(d.getMonth() + 1);
+  }
+  mnd.reverse(); // nyeste øverst
+
+  wrap.innerHTML = `
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>Måned</th>
+          <th class="num" style="width:160px">Fakturabeløp (kr)</th>
+          <th style="width:80px"></th>
+        </tr></thead>
+        <tbody>
+          ${mnd.map(m => {
+            const key = månedKey(m.maaned, m.aar);
+            const val = lagrede[key] || "";
+            return `<tr id="frow-${key}">
+              <td>${MAANEDER[m.maaned-1]} ${m.aar}</td>
+              <td>
+                <input type="number" id="finput-${key}" value="${val}"
+                  placeholder="—" min="0" step="0.01"
+                  style="width:100%;padding:6px 8px;border:1.5px solid var(--border);
+                         border-radius:6px;font-size:0.9rem;text-align:right;
+                         ${val ? "background:#f0fdf4;border-color:#a7d7a9" : ""}">
+              </td>
+              <td style="text-align:right">
+                <button onclick="lagreFakturaRad('${key}',${m.maaned},${m.aar})"
+                  style="background:var(--primary);color:white;border:none;
+                         padding:5px 12px;border-radius:6px;cursor:pointer;
+                         font-size:0.85rem;font-weight:600">
+                  Lagre
+                </button>
+              </td>
+            </tr>`;
+          }).join("")}
+        </tbody>
+      </table>
+    </div>
+    <div id="fakt-feedback" class="feedback" style="margin-top:8px"></div>`;
+}
+
+async function lagreFakturaRad(key, maaned, aar) {
+  const faktura = parseFloat($(`finput-${key}`)?.value) || 0;
+  if (!faktura || faktura <= 0) {
+    showFeedback("fakt-feedback", "error", "Angi et gyldig beløp.");
+    return;
+  }
+  const konfig = await hentMånedskonfig(maaned, aar);
+  try {
+    await setDoc(doc(db, "fakturaer", key), {
+      maaned, aar, faktura,
+      alle:       konfig.alle,
+      brennere:   konfig.brennere,
+      lagretDato: Timestamp.now()
+    });
+    // Grønn bakgrunn på feltet
+    const input = $(`finput-${key}`);
+    if (input) {
+      input.style.background = "#f0fdf4";
+      input.style.borderColor = "#a7d7a9";
+    }
+    showFeedback("fakt-feedback", "success",
+      `✓ ${MAANEDER[maaned-1]} ${aar}: ${kr(faktura)} lagret`);
+    // Nullstill statistikk-cache
+    const si = $("stat-innhold");
+    if (si) delete si.dataset.lastet;
+  } catch (e) {
+    showFeedback("fakt-feedback", "error", "Feil ved lagring.");
+    console.error(e);
+  }
+}
+window.lagreFakturaRad = lagreFakturaRad;
 
 // ================================================================
 // MÅNEDSKONFIGURASJON – hvem er med denne måneden?
