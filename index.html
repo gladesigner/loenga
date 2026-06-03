@@ -1,0 +1,167 @@
+<!DOCTYPE html>
+<html lang="no">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Loenga Keramikk – Strømoversikt</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <header>
+    <h1>⚡ Loenga Keramikk</h1>
+    <nav>
+      <button class="tab-btn active" data-tab="register">Registrer brenning</button>
+      <button class="tab-btn"        data-tab="oversikt">Oversikt</button>
+      <button class="tab-btn"        data-tab="admin">Admin 🔒</button>
+    </nav>
+  </header>
+
+  <main>
+
+    <!-- ======================================================
+         FANE 1 – Registrer brenning
+    ====================================================== -->
+    <section id="tab-register" class="tab-content active">
+      <h2>Registrer brenning</h2>
+
+      <div class="form-group">
+        <label for="reg-navn">Ditt navn</label>
+        <select id="reg-navn">
+          <option value="">Velg navn…</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label>Type brenning</label>
+        <div class="radio-group">
+          <label>
+            <input type="radio" name="brenning" value="raa">
+            Råbrann <span class="type-hint">(5,5 % av faktura)</span>
+          </label>
+          <label>
+            <input type="radio" name="brenning" value="glasur">
+            Glasurbrann <span class="type-hint">(6,5 % av faktura)</span>
+          </label>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label>Måned og år</label>
+        <div class="row">
+          <select id="reg-maaned"></select>
+          <input id="reg-aar" type="number" min="2024" max="2035" placeholder="2026">
+        </div>
+      </div>
+
+      <button id="reg-btn" class="btn-primary">Legg til brenning</button>
+      <div id="reg-feedback" class="feedback"></div>
+    </section>
+
+    <!-- ======================================================
+         FANE 2 – Oversikt
+    ====================================================== -->
+    <section id="tab-oversikt" class="tab-content">
+      <h2>Oversikt brenninger</h2>
+
+      <div class="row" style="margin-bottom: 16px">
+        <select id="ov-maaned"></select>
+        <input id="ov-aar" type="number" min="2024" max="2035" placeholder="2026">
+        <button id="ov-load-btn" class="btn-secondary">Hent</button>
+      </div>
+
+      <div id="ov-table-container"></div>
+    </section>
+
+    <!-- ======================================================
+         FANE 3 – Admin
+    ====================================================== -->
+    <section id="tab-admin" class="tab-content">
+
+      <!-- Innloggingsvegg -->
+      <div id="admin-login">
+        <h2>Admin-tilgang</h2>
+        <div class="form-group">
+          <label for="admin-pw">Passord</label>
+          <input type="password" id="admin-pw" placeholder="Skriv inn admin-kode">
+        </div>
+        <button id="admin-login-btn" class="btn-primary">Logg inn</button>
+        <div id="admin-login-error" style="color: var(--error); margin-top: 8px; font-size: 0.9rem"></div>
+      </div>
+
+      <!-- Admin-panel -->
+      <div id="admin-panel" style="display: none">
+        <h2>Administrasjon</h2>
+
+        <div class="form-group">
+          <label>Måned og år</label>
+          <div class="row">
+            <select id="adm-maaned"></select>
+            <input id="adm-aar" type="number" min="2024" max="2035" placeholder="2026">
+          </div>
+        </div>
+
+        <div class="form-group">
+          <label for="adm-faktura">Fakturabeløp (kr)</label>
+          <input id="adm-faktura" type="number" min="0" step="0.01" placeholder="0">
+        </div>
+
+        <button id="adm-calc-btn" class="btn-primary">Beregn fordeling</button>
+        <div id="adm-calc-feedback" class="feedback"></div>
+
+        <!-- Resultat vises her -->
+        <div id="adm-result" style="margin-top: 24px"></div>
+
+        <!-- E-postseksjon (skjult til beregning er gjort) -->
+        <div id="adm-email-section" style="display: none; margin-top: 28px">
+          <hr class="divider">
+          <h3>Send betalingskrav</h3>
+          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px">
+            E-postadresser er satt i <code>config.js</code>.
+            Trykk «Send alle» for å sende via EmailJS,
+            eller «Vis e-posttekst» for manuell kopiering.
+          </p>
+
+          <!-- Statusoversikt per person -->
+          <div id="adm-email-table"></div>
+
+          <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap">
+            <button id="adm-send-btn"    class="btn-primary" style="flex: 1; min-width: 160px">
+              Send alle e-poster
+            </button>
+            <button id="adm-preview-btn" class="btn-secondary" style="flex: 1; min-width: 160px">
+              Vis e-posttekst for alle
+            </button>
+          </div>
+
+          <hr class="divider">
+          <h3>Del oversikt på Messenger</h3>
+          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px">
+            Last ned bildet og del det i gruppa, eller kopier teksten og lim inn.
+          </p>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap">
+            <button id="adm-bilde-btn"  class="btn-secondary" style="flex: 1; min-width: 160px">
+              📷 Last ned bilde
+            </button>
+            <button id="adm-kopier-btn" class="btn-secondary" style="flex: 1; min-width: 160px">
+              📋 Kopier tekst
+            </button>
+          </div>
+          <div id="adm-del-feedback" class="feedback"></div>
+
+          <div id="adm-send-feedback" class="feedback" style="margin-top: 12px"></div>
+        </div>
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- EmailJS (CDN) – lastes globalt, brukes i app.js -->
+  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+
+  <!-- App (ES-modul) -->
+  <script type="module" src="app.js"></script>
+
+</body>
+</html>
