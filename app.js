@@ -295,6 +295,8 @@ function initAdmin() {
   $("adm-lagre-mottakere-btn")?.addEventListener("click", lagreMottakere);
   $("adm-last-konfig-btn")?.addEventListener("click", adminLastKonfig);
   $("adm-lagre-konfig-btn")?.addEventListener("click", adminLagreKonfig);
+  $("adm-legg-til-person-btn")?.addEventListener("click", leggTilPerson);
+  $("ny-person-input")?.addEventListener("keydown", e => { if (e.key === "Enter") leggTilPerson(); });
 
   // Google-innlogging
   $("admin-google-btn")?.addEventListener("click", adminGoogleLogin);
@@ -353,10 +355,10 @@ async function visAdminPanel(email) {
   $("admin-login").style.display  = "none";
   $("admin-panel").style.display  = "block";
   $("admin-user-email").textContent = email;
-  // Hent og vis lagrede mottakere
   const mottakere = await hentMottakere();
   const el = $("mottakere-input");
   if (el) el.value = mottakere;
+  visPersonliste();
 }
 
 // ================================================================
@@ -384,6 +386,75 @@ async function lagreMottakere() {
 }
 
 // ================================================================
+// PERSONLISTE – alle mulige deltakere (lagres i Firestore)
+// ================================================================
+async function hentAllePersoner() {
+  if (!firebaseOk) return [...ALLE_MULIGE];
+  try {
+    const snap = await getDoc(doc(db, "innstillinger", "personliste"));
+    if (snap.exists() && snap.data().navn?.length) {
+      return snap.data().navn.slice().sort();
+    }
+  } catch (e) {
+    console.warn("Bruker standard personliste:", e.message);
+  }
+  return [...ALLE_MULIGE];
+}
+
+async function leggTilPerson() {
+  const input = $("ny-person-input");
+  const navn  = input?.value.trim();
+  if (!navn) return;
+
+  const liste = await hentAllePersoner();
+  if (liste.map(n => n.toLowerCase()).includes(navn.toLowerCase())) {
+    showFeedback("adm-person-feedback", "error", `«${navn}» er allerede i listen.`);
+    return;
+  }
+
+  liste.push(navn);
+  liste.sort();
+
+  try {
+    await setDoc(doc(db, "innstillinger", "personliste"), { navn: liste });
+    input.value = "";
+    showFeedback("adm-person-feedback", "success", `✓ ${navn} lagt til`);
+    visPersonliste(liste);
+  } catch (e) {
+    showFeedback("adm-person-feedback", "error", "Feil ved lagring.");
+    console.error(e);
+  }
+}
+
+async function fjernPerson(navn) {
+  if (!confirm(`Fjern «${navn}» fra listen?`)) return;
+  let liste = await hentAllePersoner();
+  liste = liste.filter(n => n !== navn);
+  try {
+    await setDoc(doc(db, "innstillinger", "personliste"), { navn: liste });
+    showFeedback("adm-person-feedback", "success", `✓ ${navn} fjernet`);
+    visPersonliste(liste);
+  } catch (e) {
+    showFeedback("adm-person-feedback", "error", "Feil ved lagring.");
+    console.error(e);
+  }
+}
+
+async function visPersonliste(liste) {
+  const wrap = $("adm-person-liste");
+  if (!wrap) return;
+  if (!liste) liste = await hentAllePersoner();
+  wrap.innerHTML = liste.map(navn => `
+    <div style="display:flex;align-items:center;justify-content:space-between;
+                padding:7px 10px;border-bottom:1px solid var(--border);font-size:0.95rem">
+      <span>${navn}</span>
+      <button onclick="fjernPerson('${navn}')"
+        style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1rem;
+               padding:2px 6px;border-radius:4px" title="Fjern">✕</button>
+    </div>`).join("");
+}
+
+// ================================================================
 // MÅNEDSKONFIGURASJON – hvem er med denne måneden?
 // ================================================================
 function månedKey(maaned, aar) {
@@ -402,15 +473,16 @@ async function hentMånedskonfig(maaned, aar) {
 }
 
 async function adminLastKonfig() {
-  const maaned = parseInt($("adm-maaned").value);
-  const aar    = parseInt($("adm-aar").value);
-  const konfig = await hentMånedskonfig(maaned, aar);
-  const panel  = $("adm-konfig-panel");
+  const maaned    = parseInt($("adm-maaned").value);
+  const aar       = parseInt($("adm-aar").value);
+  const [konfig, alle] = await Promise.all([
+    hentMånedskonfig(maaned, aar),
+    hentAllePersoner()
+  ]);
 
-  // Bygg checkboxer for begge grupper
   ["alle", "brennere"].forEach(gruppe => {
     const wrap = $(`konfig-${gruppe}`);
-    wrap.innerHTML = ALLE_MULIGE.map(navn => `
+    wrap.innerHTML = alle.map(navn => `
       <label style="display:flex;align-items:center;gap:8px;margin-bottom:8px;cursor:pointer">
         <input type="checkbox" value="${navn}"
           ${konfig[gruppe].includes(navn) ? "checked" : ""}
@@ -419,7 +491,7 @@ async function adminLastKonfig() {
       </label>`).join("");
   });
 
-  panel.style.display = "block";
+  $("adm-konfig-panel").style.display = "block";
 }
 
 async function adminLagreKonfig() {
@@ -890,6 +962,9 @@ function kopierDeleTekst() {
   });
 }
 
+
+// Gjør fjernPerson tilgjengelig globalt (kalles fra onclick i HTML)
+window.fjernPerson = fjernPerson;
 
 // ============================================================
 // Init

@@ -168,6 +168,21 @@
         </button>
         <div id="adm-brenninger-liste" style="margin-top: 12px"></div>
 
+        <!-- Personliste -->
+        <hr class="divider" style="margin-top: 28px">
+        <h3>Alle deltakere</h3>
+        <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px">
+          Legg til eller fjern personer fra listen. Lagres i Firebase.
+        </p>
+        <div class="table-wrap" id="adm-person-liste" style="margin-bottom: 12px"></div>
+        <div class="row" style="gap: 8px">
+          <input type="text" id="ny-person-input" placeholder="Fullt navn" style="flex:1">
+          <button id="adm-legg-til-person-btn" class="btn-secondary" style="white-space:nowrap">
+            + Legg til
+          </button>
+        </div>
+        <div id="adm-person-feedback" class="feedback"></div>
+
         <!-- Månedskonfigurasjon -->
         <hr class="divider" style="margin-top: 28px">
         <h3>Deltakere per måned</h3>
