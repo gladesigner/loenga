@@ -120,29 +120,21 @@
         <!-- Resultat vises her -->
         <div id="adm-result" style="margin-top: 24px"></div>
 
-        <!-- E-postseksjon (skjult til beregning er gjort) -->
+        <!-- E-post og deling (skjult til beregning er gjort) -->
         <div id="adm-email-section" style="display: none; margin-top: 28px">
           <hr class="divider">
-          <h3>Send betalingskrav</h3>
-          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px">
-            E-postadresser er satt i <code>config.js</code>.
-            Trykk «Send alle» for å sende via EmailJS,
-            eller «Vis e-posttekst» for manuell kopiering.
+          <h3>Send felles e-post</h3>
+          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 14px">
+            Åpner e-postklienten med ferdig utfylt melding til alle.
           </p>
-
-          <!-- Statusoversikt per person -->
-          <div id="adm-email-table"></div>
-
-          <div style="display: flex; gap: 10px; margin-top: 14px; flex-wrap: wrap">
-            <button id="adm-send-btn"    class="btn-primary" style="flex: 1; min-width: 160px">
-              Send alle e-poster
-            </button>
-            <button id="adm-preview-btn" class="btn-secondary" style="flex: 1; min-width: 160px">
-              Vis e-posttekst for alle
-            </button>
+          <div class="form-group">
+            <label for="epost-til">Til (valgfritt – fyll inn eller la stå tomt)</label>
+            <input type="email" id="epost-til" placeholder="gruppe@example.com">
           </div>
+          <div id="epost-preview" class="email-preview" style="margin-bottom: 12px"></div>
+          <button id="adm-aapne-epost-btn" class="btn-primary">✉️ Åpne i e-postklient</button>
 
-          <hr class="divider">
+          <hr class="divider" style="margin-top: 24px">
           <h3>Del oversikt på Messenger</h3>
           <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px">
             Last ned bildet og del det i gruppa, eller kopier teksten og lim inn.
@@ -156,7 +148,6 @@
             </button>
           </div>
           <div id="adm-del-feedback" class="feedback"></div>
-          <div id="adm-send-feedback" class="feedback" style="margin-top: 12px"></div>
         </div>
 
         <!-- Slett brenninger -->
@@ -188,9 +179,6 @@
     </section>
 
   </main>
-
-  <!-- EmailJS (CDN) – lastes globalt, brukes i app.js -->
-  <script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
 
   <!-- App (ES-modul) -->
   <script type="module" src="app.js"></script>

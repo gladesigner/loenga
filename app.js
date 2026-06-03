@@ -11,7 +11,6 @@ import { getAuth, signInWithPopup, GoogleAuthProvider, signOut, onAuthStateChang
 
 import {
   firebaseConfig,
-  emailjsConfig,
   adminEmails,
   betalingInfo
 } from "./config.js";
@@ -239,10 +238,8 @@ function initAdmin() {
   $("adm-aar").value = now.getFullYear();
 
   $("adm-calc-btn")?.addEventListener("click", adminBeregn);
-  $("adm-send-btn")?.addEventListener("click", adminSendEmails);
-  $("adm-preview-btn")?.addEventListener("click", adminTogglePreview);
+  $("adm-aapne-epost-btn")?.addEventListener("click", aapneEpostklient);
   $("adm-last-brenninger-btn")?.addEventListener("click", adminLastBrenninger);
-  $("adm-lagre-epost-btn")?.addEventListener("click", adminLagreEposter);
 
   // Google-innlogging
   $("admin-google-btn")?.addEventListener("click", adminGoogleLogin);
@@ -301,56 +298,64 @@ function visAdminPanel(email) {
   $("admin-login").style.display  = "none";
   $("admin-panel").style.display  = "block";
   $("admin-user-email").textContent = email;
-  adminVisEpostSkjema();
 }
 
 // ================================================================
-// E-POSTADRESSER – lagres i Firestore (ikke i config.js)
+// FELLES E-POST – åpner i e-postklient via mailto:
 // ================================================================
-let cachedEmails = null;
+function genererEpostInnhold() {
+  if (!lastCalc) return { emne: "", tekst: "" };
+  const { persons, likAndel, maanedNavn, aar, faktura, baseRaa, baseGlasur } = lastCalc;
 
-async function hentEposter() {
-  if (cachedEmails) return cachedEmails;
-  try {
-    const snap = await getDoc(doc(db, "innstillinger", "epost"));
-    if (snap.exists()) {
-      cachedEmails = snap.data();
-      return cachedEmails;
-    }
-  } catch (e) {
-    console.warn("Kunne ikke hente e-poster fra Firestore:", e);
-  }
-  return {}; // tom – admin må fylle inn
+  const kol = (s, n, høyre = false) => {
+    const str = String(s);
+    return høyre ? str.padStart(n) : str.padEnd(n);
+  };
+
+  const emne = `Strøm Loenga – ${maanedNavn} ${aar}`;
+
+  const tekst = [
+    `Hei alle,`,
+    ``,
+    `Her er strømfordelingen for ${maanedNavn} ${aar}.`,
+    ``,
+    `Fakturabeløp totalt: ${kr(faktura)}`,
+    ``,
+    `${kol("Person", 14)} ${kol("Råbrann", 8)} ${kol("Glasurbrann", 12)} ${kol("Totalt", 10)}`,
+    `${"─".repeat(46)}`,
+    ...persons.map(p => {
+      const totalt = p.kost + likAndel;
+      return `${kol(p.navn, 14)} ${kol(p.raa, 8, true)} ${kol(p.glasur, 12, true)} ${kol(kr(totalt), 10, true)}`;
+    }),
+    `${"─".repeat(46)}`,
+    ``,
+    `Grunnlag:`,
+    `  Råbrann: 5,5 % av faktura = ${kr(baseRaa)} per brenning`,
+    `  Glasurbrann: 6,5 % av faktura = ${kr(baseGlasur)} per brenning`,
+    `  Restbeløp delt likt: ${kr(likAndel)} per person`,
+    ``,
+    `Betal til: ${betalingInfo.navn}`,
+    `Kontonummer: ${betalingInfo.konto}`,
+    `Vipps: ${betalingInfo.vipps}`,
+    ``,
+    `Hilsen Loenga Samvirke`
+  ].join("\n");
+
+  return { emne, tekst };
 }
 
-async function adminVisEpostSkjema() {
-  const wrap = $("adm-epost-liste");
-  if (!wrap) return;
-  const eposter = await hentEposter();
-  wrap.innerHTML = KERAMIKERE.map(navn => `
-    <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
-      <label style="width:100px;font-weight:600;font-size:0.9rem">${navn}</label>
-      <input type="email" id="epost-${navn}"
-        value="${eposter[navn] || ""}"
-        placeholder="${navn.toLowerCase()}@example.com"
-        style="flex:1;padding:8px 10px;border:1.5px solid #dde2e8;border-radius:8px;font-size:0.9rem">
-    </div>`).join("");
+function visEpostForhandsvis() {
+  const prev = $("epost-preview");
+  if (!prev) return;
+  const { tekst } = genererEpostInnhold();
+  prev.textContent = tekst;
 }
 
-async function adminLagreEposter() {
-  const eposter = {};
-  KERAMIKERE.forEach(navn => {
-    const val = document.getElementById(`epost-${navn}`)?.value.trim();
-    if (val) eposter[navn] = val;
-  });
-  try {
-    await setDoc(doc(db, "innstillinger", "epost"), eposter);
-    cachedEmails = eposter;
-    showFeedback("adm-epost-feedback", "success", "✓ E-postadresser lagret");
-  } catch (e) {
-    showFeedback("adm-epost-feedback", "error", "Feil ved lagring av e-postadresser");
-    console.error(e);
-  }
+function aapneEpostklient() {
+  const { emne, tekst } = genererEpostInnhold();
+  const til = $("epost-til")?.value.trim() || "";
+  const mailto = `mailto:${encodeURIComponent(til)}?subject=${encodeURIComponent(emne)}&body=${encodeURIComponent(tekst)}`;
+  window.location.href = mailto;
 }
 
 // ================================================================
@@ -499,12 +504,7 @@ async function adminBeregn() {
       }).join("")}`;
 
     $("adm-email-section").style.display = "block";
-    await buildEmailStatusTable(persons, likAndel);
-
-    // Hide old preview
-    const prev = $("adm-preview-content");
-    if (prev) prev.style.display = "none";
-    $("adm-preview-btn").textContent = "Vis e-posttekst for alle";
+    visEpostForhandsvis();
 
   } catch (e) {
     console.error("Beregningsfeil:", e);
@@ -515,105 +515,6 @@ async function adminBeregn() {
   }
 }
 
-// ---- Status-tabell for e-postsending ----
-async function buildEmailStatusTable(persons, likAndel) {
-  const container = $("adm-email-table");
-  const eposter   = await hentEposter();
-  let rows = persons.map(p => {
-    const totalt = p.kost + likAndel;
-    const email  = eposter[p.navn] || "—";
-    return `<tr id="erow-${p.navn}">
-      <td>${p.navn}</td>
-      <td style="font-size:0.85rem">${email}</td>
-      <td class="num">${kr(totalt)}</td>
-      <td><span id="estat-${p.navn}" class="badge badge-wait">Venter</span></td>
-    </tr>`;
-  }).join("");
-
-  container.innerHTML = `
-    <div class="table-wrap">
-      <table>
-        <thead><tr>
-          <th>Navn</th><th>E-post</th><th class="num">Beløp</th><th>Status</th>
-        </tr></thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>`;
-}
-
-// ---- Send e-poster via EmailJS ----
-async function adminSendEmails() {
-  if (!lastCalc) return;
-
-  const configured = emailjsConfig.publicKey !== "DIN_PUBLIC_KEY";
-  if (!configured) {
-    showFeedback("adm-send-feedback", "error",
-      "EmailJS er ikke konfigurert. Fyll inn verdier i config.js (se README), eller bruk «Vis e-posttekst» for manuell utsending.",
-      0);
-    return;
-  }
-
-  const btn = $("adm-send-btn");
-  btn.disabled = true;
-  btn.innerHTML = 'Sender… <span class="spinner"></span>';
-  showFeedback("adm-send-feedback", "info", "Sender e-poster…", 0);
-
-  emailjs.init(emailjsConfig.publicKey);
-
-  const eposter = await hentEposter();
-  const { persons, likAndel, maanedNavn, aar } = lastCalc;
-  let sent = 0, failed = 0, skipped = 0;
-
-  for (const p of persons) {
-    const email  = eposter[p.navn];
-    const statEl = $(`estat-${p.navn}`);
-    const totalt = p.kost + likAndel;
-
-    if (!email || email.includes("example.com")) {
-      statEl.className = "badge badge-skip";
-      statEl.textContent = "Ingen e-post";
-      skipped++;
-      continue;
-    }
-
-    statEl.className = "badge badge-sending";
-    statEl.textContent = "Sender…";
-
-    try {
-      await emailjs.send(emailjsConfig.serviceId, emailjsConfig.templateId, {
-        to_email:       email,
-        to_name:        p.navn,
-        maaned_aar:     `${maanedNavn} ${aar}`,
-        totalt_belop:   kr(totalt),
-        brenning_kost:  kr(p.kost),
-        lik_andel:      kr(likAndel),
-        raa_antall:     String(p.raa),
-        glasur_antall:  String(p.glasur),
-        betaling_navn:  betalingInfo.navn,
-        betaling_konto: betalingInfo.konto,
-        betaling_vipps: betalingInfo.vipps
-      });
-      statEl.className = "badge badge-ok";
-      statEl.textContent = "✓ Sendt";
-      sent++;
-    } catch (e) {
-      console.error(`E-post feil for ${p.navn}:`, e);
-      statEl.className = "badge badge-fail";
-      statEl.textContent = "✗ Feil";
-      failed++;
-    }
-
-    await new Promise(r => setTimeout(r, 350)); // forsinkelse mellom sendinger
-  }
-
-  btn.disabled = false;
-  btn.textContent = "Send alle e-poster";
-
-  const msg = `${sent} e-poster sendt`
-    + (skipped > 0 ? `, ${skipped} uten e-post` : "")
-    + (failed  > 0 ? `, ${failed} feil` : "");
-  showFeedback("adm-send-feedback", failed > 0 ? "error" : "success", msg, 0);
-}
 
 // ================================================================
 // DEL PÅ MESSENGER
@@ -715,63 +616,6 @@ function kopierDeleTekst() {
   });
 }
 
-// ---- Vis/skjul e-posttekst for manuell kopiering ----
-function adminTogglePreview() {
-  if (!lastCalc) return;
-
-  const btn     = $("adm-preview-btn");
-  let   prevDiv = $("adm-preview-content");
-
-  if (prevDiv && prevDiv.style.display !== "none") {
-    prevDiv.style.display = "none";
-    btn.textContent = "Vis e-posttekst for alle";
-    return;
-  }
-
-  if (!prevDiv) {
-    prevDiv = document.createElement("div");
-    prevDiv.id = "adm-preview-content";
-    $("adm-email-section").appendChild(prevDiv);
-  }
-
-  const { persons, likAndel, maanedNavn, aar } = lastCalc;
-
-  let html = "<h3>E-posttekst (kopier og send manuelt)</h3>";
-  persons.forEach(p => {
-    const totalt = p.kost + likAndel;
-    const tekst = [
-      `Hei ${p.navn},`,
-      ``,
-      `Her er din strøm-andel for ${maanedNavn} ${aar}.`,
-      ``,
-      `Brenninger:`,
-      `  Råbrann:     ${p.raa} stk`,
-      `  Glasurbrann: ${p.glasur} stk`,
-      ``,
-      `Kostnad brenning:  ${kr(p.kost)}`,
-      `Lik andel:         ${kr(likAndel)}`,
-      `─────────────────────────────────`,
-      `Totalt å betale:   ${kr(totalt)}`,
-      ``,
-      `Betal til: ${betalingInfo.navn}`,
-      `Kontonummer: ${betalingInfo.konto}`,
-      `Vipps: ${betalingInfo.vipps}`,
-      ``,
-      `Hilsen Loenga Samvirke`
-    ].join("\n");
-
-    html += `
-      <div class="card" style="margin-top:10px">
-        <div class="card-name">${p.navn} – ${kr(totalt)}</div>
-        <div class="email-preview">${tekst}</div>
-      </div>`;
-  });
-
-  prevDiv.innerHTML = html;
-  prevDiv.style.display = "block";
-  btn.textContent = "Skjul e-posttekst";
-  prevDiv.scrollIntoView({ behavior: "smooth", block: "start" });
-}
 
 // ============================================================
 // Init
