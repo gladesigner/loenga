@@ -125,19 +125,19 @@
           <hr class="divider">
           <h3>Send felles e-post</h3>
           <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 14px">
-            E-postadresser hentes automatisk fra Firebase. Du kan redigere feltet før sending.
+            Laster ned PDF og åpner e-postklienten i én operasjon.
+            Legg PDF-en ved som vedlegg i e-postklienten.
           </p>
           <div class="form-group">
             <label for="epost-til">Til (kommaseparert)</label>
             <input type="text" id="epost-til" placeholder="hentes fra lagrede adresser…">
           </div>
-          <div id="epost-preview" class="email-preview" style="margin-bottom: 14px"></div>
           <div style="display: flex; gap: 10px; flex-wrap: wrap">
             <button id="adm-aapne-epost-btn" class="btn-primary" style="flex: 1; min-width: 160px">
-              ✉️ Åpne i e-postklient
+              ✉️ Last ned PDF og åpne e-post
             </button>
             <button id="adm-pdf-btn" class="btn-secondary" style="flex: 1; min-width: 160px">
-              📄 Last ned PDF
+              📄 Bare last ned PDF
             </button>
           </div>
 
@@ -182,8 +182,6 @@
         <div id="adm-mottakere-feedback" class="feedback"></div>
 
       </div>
-    </section>
-
     </section>
 
   </main>

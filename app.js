@@ -1,6 +1,6 @@
 // ============================================================
 // Loenga Keramikk – Strømoversikt
-// app.js  (ES-modul, krever Firebase v10 + EmailJS via CDN)
+// app.js  (ES-modul, krever Firebase v10 og jsPDF via CDN)
 // ============================================================
 
 import { initializeApp }    from "https://www.gstatic.com/firebasejs/10.12.2/firebase-app.js";
@@ -240,6 +240,8 @@ function initAdmin() {
   $("adm-calc-btn")?.addEventListener("click", adminBeregn);
   $("adm-aapne-epost-btn")?.addEventListener("click", aapneEpostklient);
   $("adm-pdf-btn")?.addEventListener("click", lastNedPDF);
+  $("adm-bilde-btn")?.addEventListener("click", lastNedBilde);
+  $("adm-kopier-btn")?.addEventListener("click", kopierDeleTekst);
   $("adm-last-brenninger-btn")?.addEventListener("click", adminLastBrenninger);
   $("adm-lagre-mottakere-btn")?.addEventListener("click", lagreMottakere);
 
@@ -375,10 +377,6 @@ function genererEpostInnhold() {
 }
 
 async function visEpostForhandsvis() {
-  const prev = $("epost-preview");
-  if (!prev) return;
-  const { tekst } = genererEpostInnhold();
-  prev.textContent = tekst;
   // Auto-fyll "Til"-feltet med lagrede adresser
   const tilFelt = $("epost-til");
   if (tilFelt && !tilFelt.value) {
@@ -387,11 +385,34 @@ async function visEpostForhandsvis() {
 }
 
 async function aapneEpostklient() {
-  const { emne, tekst } = genererEpostInnhold();
+  if (!lastCalc) return;
+
+  // 1. Last ned PDF automatisk
+  lastNedPDF();
+
+  // 2. Åpne e-postklient med enkel brødtekst
+  const { maanedNavn, aar } = lastCalc;
+  const emne = `Strøm Loenga – ${maanedNavn} ${aar}`;
+  const tekst = [
+    `Hei,`,
+    ``,
+    `Her kommer fordelingen av strømutgiftene for ${maanedNavn} ${aar}. Se vedlegg.`,
+    ``,
+    `Vennlig hilsen`,
+    `Loenga Samvirke`
+  ].join("\n");
+
   let til = $("epost-til")?.value.trim();
   if (!til) til = await hentMottakere();
+
+  // Kort pause så nettleseren rekker å starte nedlastingen
+  await new Promise(r => setTimeout(r, 400));
+
   const mailto = `mailto:${encodeURIComponent(til)}?subject=${encodeURIComponent(emne)}&body=${encodeURIComponent(tekst)}`;
   window.location.href = mailto;
+
+  showFeedback("adm-del-feedback", "info",
+    "📎 PDF er lastet ned – legg den ved i e-postklienten som åpner seg nå.", 10000);
 }
 
 // ================================================================
@@ -638,7 +659,7 @@ async function adminBeregn() {
       }).join("")}`;
 
     $("adm-email-section").style.display = "block";
-    visEpostForhandsvis();
+    await visEpostForhandsvis();
 
   } catch (e) {
     console.error("Beregningsfeil:", e);
@@ -757,6 +778,3 @@ function kopierDeleTekst() {
 initRegister();
 initOversikt();
 initAdmin();
-
-$("adm-bilde-btn")?.addEventListener("click", lastNedBilde);
-$("adm-kopier-btn")?.addEventListener("click", kopierDeleTekst);
