@@ -239,13 +239,13 @@ function initAdmin() {
   populateMonthSelect("adm-maaned");
   $("adm-aar").value = now.getFullYear();
 
-  $("adm-calc-btn").addEventListener("click", adminBeregn);
-  $("adm-send-btn").addEventListener("click", adminSendEmails);
-  $("adm-preview-btn").addEventListener("click", adminTogglePreview);
+  $("adm-calc-btn")?.addEventListener("click", adminBeregn);
+  $("adm-send-btn")?.addEventListener("click", adminSendEmails);
+  $("adm-preview-btn")?.addEventListener("click", adminTogglePreview);
 
   // Google-innlogging
-  $("admin-google-btn").addEventListener("click", adminGoogleLogin);
-  $("admin-logout-btn").addEventListener("click", adminLogout);
+  $("admin-google-btn")?.addEventListener("click", adminGoogleLogin);
+  $("admin-logout-btn")?.addEventListener("click", adminLogout);
 
   // Sjekk om brukeren allerede er innlogget (ved sideoppdatering)
   if (auth) {
