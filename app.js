@@ -295,6 +295,11 @@ function initAdmin() {
   populateMonthSelect("konfig-maaned");
   $("konfig-aar").value = now.getFullYear();
 
+  // Hent lagret faktura når måned/år endres
+  const hentFakturaInput = () => hentOgFyllFaktura("adm-maaned", "adm-aar", "adm-faktura");
+  $("adm-maaned").addEventListener("change", hentFakturaInput);
+  $("adm-aar").addEventListener("change", hentFakturaInput);
+
   $("adm-calc-btn")?.addEventListener("click", adminBeregn);
   $("adm-aapne-epost-btn")?.addEventListener("click", aapneEpostklient);
   $("adm-pdf-btn")?.addEventListener("click", lastNedPDF);
@@ -462,6 +467,17 @@ async function visPersonliste(liste) {
         style="background:none;border:none;color:#dc2626;cursor:pointer;font-size:1rem;
                padding:2px 6px;border-radius:4px" title="Fjern">✕</button>
     </div>`).join("");
+}
+
+async function hentOgFyllFaktura(maanedId, aarId, inputId) {
+  const maaned = parseInt($(maanedId).value);
+  const aar    = parseInt($(aarId).value);
+  if (!maaned || !aar) return;
+  try {
+    const snap = await getDoc(doc(db, "fakturaer", månedKey(maaned, aar)));
+    const input = $(inputId);
+    if (input) input.value = snap.exists() ? snap.data().faktura : "";
+  } catch (e) { /* stille feil – bruker bare tomt felt */ }
 }
 
 // ================================================================
@@ -956,7 +972,8 @@ async function adminBeregn() {
       alle:     konfig.alle,
       brennere: konfig.brennere,
       lagretDato: Timestamp.now()
-    }).catch(e => console.warn("Kunne ikke lagre faktura:", e));
+    }).then(() => initFakturaoversikt())
+      .catch(e => console.warn("Kunne ikke lagre faktura:", e));
 
     // ---- Vis sammendrag ----
     const adm = $("adm-result");
