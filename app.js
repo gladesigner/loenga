@@ -596,12 +596,21 @@ function månedKey(maaned, aar) {
 
 async function hentMånedskonfig(maaned, aar) {
   if (!firebaseOk) return { alle: [...ALLE_DEFAULT], brennere: [...BRENNERE_DEFAULT] };
+
+  // Prøv valgt måned
   try {
     const snap = await getDoc(doc(db, "manedskonfig", månedKey(maaned, aar)));
     if (snap.exists()) return snap.data();
-  } catch (e) {
-    console.warn("Ingen manedskonfig, bruker standard:", e.message);
-  }
+  } catch (e) { /* stille */ }
+
+  // Fallback: bruk forrige måneds konfig
+  const forrige = new Date(aar, maaned - 2, 1); // maaned er 1-indeksert
+  try {
+    const snap = await getDoc(doc(db, "manedskonfig",
+      månedKey(forrige.getMonth() + 1, forrige.getFullYear())));
+    if (snap.exists()) return snap.data();
+  } catch (e) { /* stille */ }
+
   return { alle: [...ALLE_DEFAULT], brennere: [...BRENNERE_DEFAULT] };
 }
 
