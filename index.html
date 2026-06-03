@@ -120,25 +120,29 @@
         <!-- Resultat vises her -->
         <div id="adm-result" style="margin-top: 24px"></div>
 
-        <!-- E-post og deling (skjult til beregning er gjort) -->
+        <!-- E-post og PDF (skjult til beregning er gjort) -->
         <div id="adm-email-section" style="display: none; margin-top: 28px">
           <hr class="divider">
           <h3>Send felles e-post</h3>
           <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 14px">
-            Åpner e-postklienten med ferdig utfylt melding til alle.
+            E-postadresser hentes automatisk fra Firebase. Du kan redigere feltet før sending.
           </p>
           <div class="form-group">
-            <label for="epost-til">Til (valgfritt – fyll inn eller la stå tomt)</label>
-            <input type="email" id="epost-til" placeholder="gruppe@example.com">
+            <label for="epost-til">Til (kommaseparert)</label>
+            <input type="text" id="epost-til" placeholder="hentes fra lagrede adresser…">
           </div>
-          <div id="epost-preview" class="email-preview" style="margin-bottom: 12px"></div>
-          <button id="adm-aapne-epost-btn" class="btn-primary">✉️ Åpne i e-postklient</button>
+          <div id="epost-preview" class="email-preview" style="margin-bottom: 14px"></div>
+          <div style="display: flex; gap: 10px; flex-wrap: wrap">
+            <button id="adm-aapne-epost-btn" class="btn-primary" style="flex: 1; min-width: 160px">
+              ✉️ Åpne i e-postklient
+            </button>
+            <button id="adm-pdf-btn" class="btn-secondary" style="flex: 1; min-width: 160px">
+              📄 Last ned PDF
+            </button>
+          </div>
 
           <hr class="divider" style="margin-top: 24px">
           <h3>Del oversikt på Messenger</h3>
-          <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px">
-            Last ned bildet og del det i gruppa, eller kopier teksten og lim inn.
-          </p>
           <div style="display: flex; gap: 10px; flex-wrap: wrap">
             <button id="adm-bilde-btn"  class="btn-secondary" style="flex: 1; min-width: 160px">
               📷 Last ned bilde
@@ -150,7 +154,7 @@
           <div id="adm-del-feedback" class="feedback"></div>
         </div>
 
-        <!-- Slett brenninger -->
+        <!-- Administrer brenninger -->
         <hr class="divider" style="margin-top: 28px">
         <h3>Administrer brenninger</h3>
         <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px">
@@ -161,17 +165,21 @@
         </button>
         <div id="adm-brenninger-liste" style="margin-top: 12px"></div>
 
-        <!-- E-postadresser -->
+        <!-- E-postmottakere (lagret i Firebase) -->
         <hr class="divider" style="margin-top: 28px">
-        <h3>E-postadresser</h3>
-        <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 14px">
-          Lagres i Firebase — vises ikke på GitHub.
+        <h3>E-postmottakere</h3>
+        <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px">
+          Lagres i Firebase — ikke synlig på GitHub. Hentes automatisk ved sending.
         </p>
-        <div id="adm-epost-liste"></div>
-        <button id="adm-lagre-epost-btn" class="btn-primary" style="margin-top: 10px">
-          Lagre e-postadresser
-        </button>
-        <div id="adm-epost-feedback" class="feedback"></div>
+        <div class="form-group">
+          <label for="mottakere-input">E-postadresser (kommaseparert)</label>
+          <textarea id="mottakere-input" rows="3"
+            placeholder="maia@example.com, marte@example.com, …"
+            style="width:100%; padding:10px 12px; border:1.5px solid #dde2e8;
+                   border-radius:10px; font-size:0.9rem; resize:vertical"></textarea>
+        </div>
+        <button id="adm-lagre-mottakere-btn" class="btn-primary">Lagre e-postadresser</button>
+        <div id="adm-mottakere-feedback" class="feedback"></div>
 
       </div>
     </section>
@@ -180,6 +188,8 @@
 
   </main>
 
+  <!-- jsPDF for PDF-generering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
   <!-- App (ES-modul) -->
   <script type="module" src="app.js"></script>
 

@@ -239,7 +239,9 @@ function initAdmin() {
 
   $("adm-calc-btn")?.addEventListener("click", adminBeregn);
   $("adm-aapne-epost-btn")?.addEventListener("click", aapneEpostklient);
+  $("adm-pdf-btn")?.addEventListener("click", lastNedPDF);
   $("adm-last-brenninger-btn")?.addEventListener("click", adminLastBrenninger);
+  $("adm-lagre-mottakere-btn")?.addEventListener("click", lagreMottakere);
 
   // Google-innlogging
   $("admin-google-btn")?.addEventListener("click", adminGoogleLogin);
@@ -293,11 +295,39 @@ async function adminLogout() {
   $("adm-email-section").style.display = "none";
 }
 
-function visAdminPanel(email) {
+async function visAdminPanel(email) {
   adminAuthenticated = true;
   $("admin-login").style.display  = "none";
   $("admin-panel").style.display  = "block";
   $("admin-user-email").textContent = email;
+  // Hent og vis lagrede mottakere
+  const mottakere = await hentMottakere();
+  const el = $("mottakere-input");
+  if (el) el.value = mottakere;
+}
+
+// ================================================================
+// E-POSTMOTTAKERE – lagres i Firestore, ikke i GitHub
+// ================================================================
+async function hentMottakere() {
+  try {
+    const snap = await getDoc(doc(db, "innstillinger", "mottakere"));
+    if (snap.exists()) return snap.data().epost || "";
+  } catch (e) {
+    console.warn("Kunne ikke hente mottakere:", e);
+  }
+  return "";
+}
+
+async function lagreMottakere() {
+  const epost = $("mottakere-input")?.value.trim() || "";
+  try {
+    await setDoc(doc(db, "innstillinger", "mottakere"), { epost });
+    showFeedback("adm-mottakere-feedback", "success", "✓ E-postadresser lagret i Firebase");
+  } catch (e) {
+    showFeedback("adm-mottakere-feedback", "error", "Feil ved lagring");
+    console.error(e);
+  }
 }
 
 // ================================================================
@@ -344,18 +374,122 @@ function genererEpostInnhold() {
   return { emne, tekst };
 }
 
-function visEpostForhandsvis() {
+async function visEpostForhandsvis() {
   const prev = $("epost-preview");
   if (!prev) return;
   const { tekst } = genererEpostInnhold();
   prev.textContent = tekst;
+  // Auto-fyll "Til"-feltet med lagrede adresser
+  const tilFelt = $("epost-til");
+  if (tilFelt && !tilFelt.value) {
+    tilFelt.value = await hentMottakere();
+  }
 }
 
-function aapneEpostklient() {
+async function aapneEpostklient() {
   const { emne, tekst } = genererEpostInnhold();
-  const til = $("epost-til")?.value.trim() || "";
+  let til = $("epost-til")?.value.trim();
+  if (!til) til = await hentMottakere();
   const mailto = `mailto:${encodeURIComponent(til)}?subject=${encodeURIComponent(emne)}&body=${encodeURIComponent(tekst)}`;
   window.location.href = mailto;
+}
+
+// ================================================================
+// PDF-GENERERING
+// ================================================================
+function lastNedPDF() {
+  if (!lastCalc) return;
+  const { persons, likAndel, maanedNavn, aar, faktura, baseRaa, baseGlasur, totalBrenning, rest } = lastCalc;
+  const { jsPDF } = window.jspdf;
+  const pdf  = new jsPDF({ unit: 'mm', format: 'a4' });
+  const mx   = 20;   // venstre margin
+  const pw   = 170;  // innholdsbredde
+  let   y    = 0;
+
+  // ---- Grønn header ----
+  pdf.setFillColor(44, 95, 46);
+  pdf.rect(0, 0, 210, 28, 'F');
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFont('helvetica', 'bold');
+  pdf.setFontSize(15);
+  pdf.text(`Strøm Loenga – ${maanedNavn} ${aar}`, mx, 16);
+  pdf.setFont('helvetica', 'normal');
+  pdf.setFontSize(9);
+  pdf.text('Fordeling av strømkostnader', mx, 23);
+
+  y = 38;
+
+  // ---- Sammendrag ----
+  pdf.setTextColor(40, 40, 40);
+  const samm = [
+    ['Fakturabeløp totalt:',                        kr(faktura)],
+    ['Råbrann per brenning (5,5 %):',          kr(baseRaa)],
+    ['Glasurbrann per brenning (6,5 %):',           kr(baseGlasur)],
+    ['Sum brenningskostnader:',                           kr(totalBrenning)],
+    [`Restbeløp delt likt (${persons.length} pers.):`,
+     `${kr(rest)} → ${kr(likAndel)} per person`],
+  ];
+  samm.forEach(([label, val]) => {
+    pdf.setFont('helvetica', 'bold');   pdf.setFontSize(9);
+    pdf.text(label, mx, y);
+    pdf.setFont('helvetica', 'normal'); pdf.text(val, mx + 85, y);
+    y += 6;
+  });
+
+  y += 6;
+
+  // ---- Tabell ----
+  const cx   = [mx, mx + 62, mx + 94, mx + 130]; // x-start per kolonne
+  const rowH = 8;
+
+  // Kolonneoverskrifter
+  pdf.setFillColor(44, 95, 46);
+  pdf.rect(mx, y, pw, rowH, 'F');
+  pdf.setTextColor(255, 255, 255);
+  pdf.setFont('helvetica', 'bold'); pdf.setFontSize(9);
+  ['Person', 'Råbrann', 'Glasurbrann', 'Totalt'].forEach((h, i) =>
+    pdf.text(h, cx[i] + 2, y + 5.5));
+  y += rowH;
+
+  // Datarader
+  persons.forEach((p, i) => {
+    if (i % 2 === 0) {
+      pdf.setFillColor(248, 249, 250);
+      pdf.rect(mx, y, pw, rowH, 'F');
+    }
+    pdf.setTextColor(30, 30, 30);
+    pdf.setFont('helvetica', 'normal'); pdf.setFontSize(9);
+    pdf.text(p.navn,          cx[0] + 2, y + 5.5);
+    pdf.text(String(p.raa),   cx[1] + 2, y + 5.5);
+    pdf.text(String(p.glasur),cx[2] + 2, y + 5.5);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setTextColor(44, 95, 46);
+    pdf.text(kr(p.kost + likAndel), cx[3] + 2, y + 5.5);
+    y += rowH;
+  });
+
+  // Tabellkant
+  pdf.setDrawColor(200, 200, 200);
+  pdf.rect(mx, y - (persons.length + 1) * rowH, pw, (persons.length + 1) * rowH, 'S');
+
+  y += 10;
+
+  // ---- Betalingsinformasjon ----
+  pdf.setFillColor(232, 245, 233);
+  pdf.setDrawColor(167, 215, 169);
+  pdf.rect(mx, y, pw, 24, 'FD');
+  const bx = mx + 3;
+  pdf.setTextColor(30, 30, 30); pdf.setFontSize(9);
+  [
+    ['Betal til:',     betalingInfo.navn],
+    ['Kontonummer:',   betalingInfo.konto],
+    ['Vipps:',         betalingInfo.vipps],
+  ].forEach(([label, val], i) => {
+    pdf.setFont('helvetica', 'bold');   pdf.text(label, bx, y + 7 + i * 7);
+    pdf.setFont('helvetica', 'normal'); pdf.text(val,   bx + 30, y + 7 + i * 7);
+  });
+
+  pdf.save(`strom_loenga_${maanedNavn}_${aar}.pdf`.toLowerCase().replace(/\s+/g, '_'));
 }
 
 // ================================================================
