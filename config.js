@@ -18,9 +18,11 @@ export const firebaseConfig = {
 //    Opprett gratis konto på https://www.emailjs.com
 //    Lag en Gmail-tjeneste og en e-postmal (se README for malinnhold)
 export const emailjsConfig = {
-  publicKey:  "DIN_PUBLIC_KEY",       // Account → API Keys
-  serviceId:  "service_xxxxxxx",      // Email Services → Service ID
-  templateId: "template_xxxxxxx"      // Email Templates → Template ID
+  publicKey:  "E3JxcIadrv5trZtls",       // Account → API Keys
+  serviceId:  "service_429rchx",      // Email Services → Service ID
+  templateId: "template_v7pj2i4"      // Email Templates → Template ID
+  
+  
 };
 
 // 3. Admin-e-poster (Google-kontoer med admin-tilgang)
