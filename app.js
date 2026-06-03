@@ -219,6 +219,9 @@ async function loadOversikt() {
 
   wrap.innerHTML = "<p style='color:#666'>Henter…</p>";
 
+  // Hent månedskonfig uavhengig av brenninger-spørringen
+  const konfig = await hentMånedskonfig(maaned, aar);
+
   try {
     const snap = await getDocs(
       query(collection(db, "brenninger"),
@@ -226,16 +229,15 @@ async function loadOversikt() {
         where("aar",    "==", aar))
     );
 
-    const konfig = await hentMånedskonfig(maaned, aar);
     const counts = {};
     konfig.brennere.forEach(n => counts[n] = { raa: 0, glasur: 0 });
-    snap.forEach(doc => {
-      const d = doc.data();
-      if (counts[d.navn]) counts[d.navn][d.type]++;
+    snap.forEach(d => {
+      const b = d.data();
+      if (counts[b.navn]) counts[b.navn][b.type]++;
     });
 
     let totRaa = 0, totGlasur = 0;
-    let rows = konfig.brennere.map(navn => {
+    const rows = konfig.brennere.map(navn => {
       const { raa, glasur } = counts[navn] || { raa: 0, glasur: 0 };
       totRaa    += raa;
       totGlasur += glasur;
@@ -247,13 +249,6 @@ async function loadOversikt() {
       </tr>`;
     }).join("");
 
-    rows += `<tr class="total-row">
-      <td>Totalt</td>
-      <td class="num">${totRaa}</td>
-      <td class="num">${totGlasur}</td>
-      <td class="num">${totRaa + totGlasur}</td>
-    </tr>`;
-
     wrap.innerHTML = `
       <div class="table-wrap">
         <table>
@@ -263,7 +258,15 @@ async function loadOversikt() {
             <th class="num">Glasurbrann</th>
             <th class="num">Totalt</th>
           </tr></thead>
-          <tbody>${rows}</tbody>
+          <tbody>
+            ${rows}
+            <tr class="total-row">
+              <td>Totalt</td>
+              <td class="num">${totRaa}</td>
+              <td class="num">${totGlasur}</td>
+              <td class="num">${totRaa + totGlasur}</td>
+            </tr>
+          </tbody>
         </table>
       </div>
       ${snap.size === 0
@@ -272,7 +275,11 @@ async function loadOversikt() {
         : ""}`;
   } catch (e) {
     console.error("Oversikt-feil:", e);
-    wrap.innerHTML = `<div class="feedback show error">Klarte ikke hente data. Sjekk Firebase-oppsett.</div>`;
+    // Vis selve feilmeldingen så det er enklere å feilsøke
+    wrap.innerHTML = `<div class="feedback show error">
+      Feil: ${e.message || e.code || "Ukjent"}
+      ${e.message?.includes("index") ? "<br>Opprett manglende Firestore-index via lenken i nettleserkonsollen (F12)." : ""}
+    </div>`;
   }
 }
 
