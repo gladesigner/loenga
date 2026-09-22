@@ -536,7 +536,7 @@ async function initFakturaoversikt() {
   const lagrede = {};
   try {
     const snap = await getDocs(collection(db, "fakturaer"));
-    snap.forEach(d => { lagrede[månedKey(d.data().maaned, d.data().aar)] = d.data().faktura; });
+    snap.forEach(d => { lagrede[månedKey(d.data().maaned, d.data().aar)] = d.data(); });
   } catch (e) { console.warn(e); }
 
   // Generer måneder fra jan 2026 til N måneder frem i tid
@@ -554,22 +554,28 @@ async function initFakturaoversikt() {
       <table>
         <thead><tr>
           <th>Måned</th>
-          <th class="num" style="width:160px">Fakturabeløp (kr)</th>
-          <th style="width:80px"></th>
+          <th class="num" style="width:120px">Beløp (kr)</th>
+          <th class="num" style="width:110px">Forbruk (kWh)</th>
+          <th class="num" style="width:80px">kr/kWh</th>
+          <th style="width:70px"></th>
         </tr></thead>
         <tbody>
           ${mnd.map(m => {
-            const key = månedKey(m.maaned, m.aar);
-            const val = lagrede[key] || "";
-            return `<tr id="frow-${key}">
-              <td>${MAANEDER[m.maaned-1]} ${m.aar}</td>
-              <td>
-                <input type="number" id="finput-${key}" value="${val}"
+            const key  = månedKey(m.maaned, m.aar);
+            const rad  = lagrede[key] || {};
+            const val  = rad.faktura ?? "";
+            const kwh  = rad.kwh ?? "";
+            const pris = (val && kwh) ? (val / kwh).toFixed(2).replace(".", ",") : "—";
+            const felt = (id, v) => `<input type="number" id="${id}-${key}" value="${v}"
                   placeholder="—" min="0" step="0.01"
                   style="width:100%;padding:6px 8px;border:1.5px solid var(--border);
                          border-radius:6px;font-size:0.9rem;text-align:right;
-                         ${val ? "background:#f0fdf4;border-color:#a7d7a9" : ""}">
-              </td>
+                         ${v !== "" ? "background:#f0fdf4;border-color:#a7d7a9" : ""}">`;
+            return `<tr id="frow-${key}">
+              <td style="white-space:nowrap">${MAANEDER[m.maaned-1]} ${m.aar}</td>
+              <td>${felt("finput", val)}</td>
+              <td>${felt("kinput", kwh)}</td>
+              <td class="num" id="fpris-${key}" style="color:#6b7280;font-size:0.85rem">${pris}</td>
               <td style="text-align:right">
                 <button onclick="lagreFakturaRad('${key}',${m.maaned},${m.aar})"
                   style="background:var(--primary);color:white;border:none;
@@ -594,6 +600,7 @@ async function initFakturaoversikt() {
 
 async function lagreFakturaRad(key, maaned, aar) {
   const faktura = parseFloat($(`finput-${key}`)?.value) || 0;
+  const kwh     = parseFloat($(`kinput-${key}`)?.value) || 0;
   if (!faktura || faktura <= 0) {
     showFeedback("fakt-feedback", "error", "Angi et gyldig beløp.");
     return;
@@ -601,19 +608,24 @@ async function lagreFakturaRad(key, maaned, aar) {
   const konfig = await hentMånedskonfig(maaned, aar);
   try {
     await setDoc(doc(db, "fakturaer", key), {
-      maaned, aar, faktura,
+      maaned, aar, faktura, kwh,
       alle:       konfig.alle,
       brennere:   konfig.brennere,
       lagretDato: Timestamp.now()
+    }, { merge: true });
+    // Grønn bakgrunn på feltene + oppdatert kr/kWh
+    [`finput-${key}`, `kinput-${key}`].forEach(id => {
+      const el = $(id);
+      if (el && el.value !== "") {
+        el.style.background  = "#f0fdf4";
+        el.style.borderColor = "#a7d7a9";
+      }
     });
-    // Grønn bakgrunn på feltet
-    const input = $(`finput-${key}`);
-    if (input) {
-      input.style.background = "#f0fdf4";
-      input.style.borderColor = "#a7d7a9";
-    }
+    const pris = $(`fpris-${key}`);
+    if (pris) pris.textContent = kwh ? (faktura / kwh).toFixed(2).replace(".", ",") : "—";
+
     showFeedback("fakt-feedback", "success",
-      `✓ ${MAANEDER[maaned-1]} ${aar}: ${kr(faktura)} lagret`);
+      `✓ ${MAANEDER[maaned-1]} ${aar}: ${kr(faktura)}${kwh ? ` · ${kwh} kWh` : ""} lagret`);
     // Nullstill statistikk-cache
     const si = $("stat-innhold");
     if (si) delete si.dataset.lastet;
@@ -1041,7 +1053,8 @@ async function adminBeregn() {
       alle:     konfig.alle,
       brennere: konfig.brennere,
       lagretDato: Timestamp.now()
-    }).then(() => initFakturaoversikt())
+    }, { merge: true })          // merge – så lagret kWh ikke overskrives
+      .then(() => initFakturaoversikt())
       .catch(e => console.warn("Kunne ikke lagre faktura:", e));
 
     // ---- Vis sammendrag ----
