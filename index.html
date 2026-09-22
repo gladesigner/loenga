@@ -38,11 +38,11 @@
         <div class="radio-group">
           <label>
             <input type="radio" name="brenning" value="raa">
-            Råbrann <span class="type-hint">(5,5 % av faktura)</span>
+            Råbrann
           </label>
           <label>
             <input type="radio" name="brenning" value="glasur">
-            Glasurbrann <span class="type-hint">(6,5 % av faktura)</span>
+            Glasurbrann
           </label>
         </div>
       </div>
@@ -138,8 +138,15 @@
         </div>
 
         <div class="form-group">
-          <label for="adm-faktura">Fakturabeløp (kr)</label>
-          <input id="adm-faktura" type="number" min="0" step="0.01" placeholder="0">
+          <label>Faktura</label>
+          <div class="row">
+            <input id="adm-faktura" type="number" min="0" step="0.01" placeholder="Beløp i kr">
+            <input id="adm-kwh" type="number" min="0" step="0.01" placeholder="Forbruk i kWh">
+          </div>
+          <p style="font-size:0.8rem;color:var(--text-muted);margin-top:6px">
+            Begge tallene står på strømfakturaen. Med kWh prises brenningene til
+            månedens faktiske strømpris.
+          </p>
         </div>
 
         <button id="adm-calc-btn" class="btn-primary">Beregn fordeling</button>
@@ -251,6 +258,49 @@
           og er grunnlaget for å prise brenningene etter faktisk strømpris.
         </p>
         <div id="faktura-oversikt-liste"></div>
+
+        <!-- Fordelingsmodell -->
+        <hr class="divider" style="margin-top: 28px">
+        <h3>Fordelingsmodell</h3>
+        <p style="font-size: 0.88rem; color: var(--text-muted); margin-bottom: 12px">
+          Hver brenning belastes et fast antall kWh, priset til månedens faktiske
+          strømpris. Resten av forbruket deles likt. Estimatene under er utledet
+          av fakturaene for 2026.
+        </p>
+        <div class="row" style="margin-bottom: 16px; gap: 12px">
+          <div style="flex:1">
+            <label style="display:block;font-weight:600;font-size:0.85rem;margin-bottom:4px">
+              Råbrann (kWh)
+            </label>
+            <input id="fordeling-kwh-raa" type="number" min="1" max="600" step="1" placeholder="58">
+          </div>
+          <div style="flex:1">
+            <label style="display:block;font-weight:600;font-size:0.85rem;margin-bottom:4px">
+              Glasurbrann (kWh)
+            </label>
+            <input id="fordeling-kwh-glasur" type="number" min="1" max="600" step="1" placeholder="75">
+          </div>
+        </div>
+
+        <p style="font-size: 0.82rem; color: var(--text-muted); margin-bottom: 10px">
+          Reservemodell, brukes bare for måneder uten registrert kWh:
+        </p>
+        <div class="row" style="margin-bottom: 12px; gap: 12px">
+          <div style="flex:1">
+            <label style="display:block;font-weight:600;font-size:0.85rem;margin-bottom:4px">
+              Fellesandel (%)
+            </label>
+            <input id="fordeling-fast" type="number" min="0" max="80" step="1" placeholder="55">
+          </div>
+          <div style="flex:1">
+            <label style="display:block;font-weight:600;font-size:0.85rem;margin-bottom:4px">
+              Glasurbrann vekt (×)
+            </label>
+            <input id="fordeling-vekt" type="number" min="1" max="3" step="0.05" placeholder="1.3">
+          </div>
+        </div>
+        <button id="adm-lagre-fordeling-btn" class="btn-primary">Lagre fordelingsmodell</button>
+        <div id="adm-fordeling-feedback" class="feedback"></div>
 
         <!-- E-postmottakere (lagret i Firebase) -->
         <hr class="divider" style="margin-top: 28px">

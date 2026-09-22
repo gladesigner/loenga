@@ -54,6 +54,109 @@ const MAANEDER   = [
   "Juli","August","September","Oktober","November","Desember"
 ];
 
+// ---- Fordelingsmodell ----
+// Hovedmodell (når månedens forbruk i kWh er registrert): hver brenning belastes
+// et fast antall kWh, priset til månedens faktiske kr/kWh (faktura ÷ kWh).
+// Resten av forbruket – lys, varme, standby – deles likt. Da justerer modellen
+// seg selv når strømprisen endrer seg, og summen treffer alltid fakturabeløpet.
+//
+// Reservemodell (når kWh mangler): en fast prosentandel deles likt, resten
+// fordeles på brenningene vektet etter type.
+const FORDELING_DEFAULT = {
+  kwhRaa:     58,    // kWh per råbrann
+  kwhGlasur:  75,    // kWh per glasurbrann
+  fastAndel:  0.55,  // reserve: andel som deles likt når kWh mangler
+  vektGlasur: 1.3    // reserve: glasurbrann i råbrann-enheter
+};
+let fordelingCache = null;
+
+async function hentFordeling() {
+  if (fordelingCache) return fordelingCache;
+  if (!firebaseOk) return { ...FORDELING_DEFAULT };
+  try {
+    const snap = await getDoc(doc(db, "innstillinger", "fordeling"));
+    if (snap.exists()) {
+      const d = snap.data();
+      const tall = (v, fallback) => Number.isFinite(v) ? v : fallback;
+      fordelingCache = {
+        kwhRaa:     tall(d.kwhRaa,     FORDELING_DEFAULT.kwhRaa),
+        kwhGlasur:  tall(d.kwhGlasur,  FORDELING_DEFAULT.kwhGlasur),
+        fastAndel:  tall(d.fastAndel,  FORDELING_DEFAULT.fastAndel),
+        vektGlasur: tall(d.vektGlasur, FORDELING_DEFAULT.vektGlasur)
+      };
+      return fordelingCache;
+    }
+  } catch (e) { /* stille – bruker standard */ }
+  return { ...FORDELING_DEFAULT };
+}
+
+// Kjernen i beregningen. counts = { navn: {raa, glasur} }
+function fordel(faktura, alle, counts, fordeling, kwhTotal = 0) {
+  const { fastAndel, vektGlasur, kwhRaa, kwhGlasur } = fordeling;
+  const n = alle.length || 1;
+
+  // ---------- Hovedmodell: kWh ----------
+  if (kwhTotal > 0 && kwhRaa > 0) {
+    const pris = faktura / kwhTotal;
+
+    let ovnKwh = 0;
+    alle.forEach(navn => {
+      const c = counts[navn] || {};
+      ovnKwh += (c.raa || 0) * kwhRaa + (c.glasur || 0) * kwhGlasur;
+    });
+
+    // Sikkerhetsventil: ovnen kan aldri ha brukt mer enn totalforbruket
+    const skala = ovnKwh > kwhTotal ? kwhTotal / ovnKwh : 1;
+    const kRaa  = kwhRaa    * skala;
+    const kGla  = kwhGlasur * skala;
+    const fellesKwh = kwhTotal - ovnKwh * skala;
+
+    return {
+      persons: alle.map(navn => {
+        const { raa = 0, glasur = 0 } = counts[navn] || {};
+        return { navn, raa, glasur, kost: (raa * kRaa + glasur * kGla) * pris };
+      }),
+      likAndel:   fellesKwh * pris / n,
+      prisRaa:    kRaa * pris,
+      prisGlasur: kGla * pris,
+      fastSum:    fellesKwh * pris,
+      varSum:     ovnKwh * skala * pris,
+      enheter: 0, modell: "kwh",
+      kwhTotal, kwhOvn: ovnKwh * skala, kwhFelles: fellesKwh, pris, skala
+    };
+  }
+
+  // ---------- Reservemodell: prosent ----------
+  let enheter = 0;
+  alle.forEach(navn => {
+    const c = counts[navn] || { raa: 0, glasur: 0 };
+    enheter += (c.raa || 0) + (c.glasur || 0) * vektGlasur;
+  });
+
+  // Ingen brenninger denne måneden – hele beløpet deles likt
+  if (enheter <= 0) {
+    const lik = faktura / n;
+    return {
+      persons: alle.map(navn => ({ navn, raa: 0, glasur: 0, kost: 0 })),
+      likAndel: lik, prisRaa: 0, prisGlasur: 0,
+      fastSum: faktura, varSum: 0, enheter: 0, modell: "prosent"
+    };
+  }
+
+  const fastSum   = faktura * fastAndel;
+  const likAndel  = fastSum / n;
+  const varSum    = faktura - fastSum;
+  const prisRaa   = varSum / enheter;
+  const prisGlasur = prisRaa * vektGlasur;
+
+  const persons = alle.map(navn => {
+    const { raa = 0, glasur = 0 } = counts[navn] || {};
+    return { navn, raa, glasur, kost: raa * prisRaa + glasur * prisGlasur };
+  });
+
+  return { persons, likAndel, prisRaa, prisGlasur, fastSum, varSum, enheter, modell: "prosent" };
+}
+
 // ---- Hjelp ----
 const $   = id => document.getElementById(id);
 const now = new Date();
@@ -350,6 +453,7 @@ function initAdmin() {
   $("adm-kopier-btn")?.addEventListener("click", kopierDeleTekst);
   $("adm-last-brenninger-btn")?.addEventListener("click", adminLastBrenninger);
   $("adm-lagre-mottakere-btn")?.addEventListener("click", lagreMottakere);
+  $("adm-lagre-fordeling-btn")?.addEventListener("click", lagreFordeling);
   $("adm-last-konfig-btn")?.addEventListener("click", adminLastKonfig);
   $("adm-lagre-konfig-btn")?.addEventListener("click", adminLagreKonfig);
   $("adm-legg-til-person-btn")?.addEventListener("click", leggTilPerson);
@@ -417,6 +521,41 @@ async function visAdminPanel(email) {
   if (el) el.value = mottakere;
   visPersonliste();
   initFakturaoversikt();
+
+  const f = await hentFordeling();
+  const sett = (id, v) => { if ($(id)) $(id).value = v; };
+  sett("fordeling-kwh-raa",    f.kwhRaa);
+  sett("fordeling-kwh-glasur", f.kwhGlasur);
+  sett("fordeling-fast",       Math.round(f.fastAndel * 100));
+  sett("fordeling-vekt",       f.vektGlasur);
+}
+
+async function lagreFordeling() {
+  const kRaa = parseFloat($("fordeling-kwh-raa")?.value);
+  const kGla = parseFloat($("fordeling-kwh-glasur")?.value);
+  const pst  = parseFloat($("fordeling-fast")?.value);
+  const vekt = parseFloat($("fordeling-vekt")?.value);
+
+  if (!Number.isFinite(kRaa) || kRaa <= 0 || !Number.isFinite(kGla) || kGla <= 0)
+    return showFeedback("adm-fordeling-feedback", "error", "Angi kWh for begge brenningstypene.");
+  if (!Number.isFinite(pst) || pst < 0 || pst > 80)
+    return showFeedback("adm-fordeling-feedback", "error", "Fellesandel må være mellom 0 og 80 %.");
+  if (!Number.isFinite(vekt) || vekt < 1 || vekt > 3)
+    return showFeedback("adm-fordeling-feedback", "error", "Vekten må være mellom 1 og 3.");
+
+  const ny = { kwhRaa: kRaa, kwhGlasur: kGla, fastAndel: pst / 100, vektGlasur: vekt };
+  try {
+    await setDoc(doc(db, "innstillinger", "fordeling"), ny, { merge: true });
+    fordelingCache = ny;
+    showFeedback("adm-fordeling-feedback", "success",
+      `✓ Lagret: råbrann ${kRaa} kWh, glasurbrann ${kGla} kWh`);
+    // Nullstill statistikk-cachen så tallene regnes på nytt
+    const si = $("stat-innhold");
+    if (si) delete si.dataset.lastet;
+  } catch (e) {
+    showFeedback("adm-fordeling-feedback", "error", "Feil ved lagring.");
+    console.error(e);
+  }
 }
 
 // ================================================================
@@ -520,6 +659,8 @@ async function hentOgFyllFaktura(maanedId, aarId, inputId) {
     const snap = await getDoc(doc(db, "fakturaer", månedKey(maaned, aar)));
     const input = $(inputId);
     if (input) input.value = snap.exists() ? snap.data().faktura : "";
+    const kInput = $("adm-kwh");
+    if (kInput) kInput.value = snap.exists() ? (snap.data().kwh || "") : "";
   } catch (e) { /* stille feil – bruker bare tomt felt */ }
 }
 
@@ -745,7 +886,8 @@ async function adminLagreKonfig() {
 // ================================================================
 function genererEpostInnhold() {
   if (!lastCalc) return { emne: "", tekst: "" };
-  const { persons, likAndel, maanedNavn, aar, faktura, baseRaa, baseGlasur } = lastCalc;
+  const { persons, likAndel, maanedNavn, aar, faktura, baseRaa, baseGlasur, fordeling } = lastCalc;
+  const fastPst = Math.round((fordeling?.fastAndel ?? 0.08) * 100);
 
   const kol = (s, n, høyre = false) => {
     const str = String(s);
@@ -770,9 +912,13 @@ function genererEpostInnhold() {
     `${"─".repeat(46)}`,
     ``,
     `Grunnlag:`,
-    `  Råbrann: 5,5 % av faktura = ${kr(baseRaa)} per brenning`,
-    `  Glasurbrann: 6,5 % av faktura = ${kr(baseGlasur)} per brenning`,
-    `  Restbeløp delt likt: ${kr(likAndel)} per person`,
+    ...(lastCalc.f?.modell === "kwh"
+      ? [`  Forbruk: ${Math.round(lastCalc.f.kwhTotal)} kWh til ${lastCalc.f.pris.toFixed(2).replace(".", ",")} kr/kWh`,
+         `  Ovn: ${Math.round(lastCalc.f.kwhOvn)} kWh · Fellesforbruk: ${Math.round(lastCalc.f.kwhFelles)} kWh`]
+      : [`  Fellesforbruk (${fastPst} % av fakturaen)`]),
+    `  Fellesforbruk delt likt: ${kr(likAndel)} per person`,
+    `  Råbrann: ${kr(baseRaa)} per brenning`,
+    `  Glasurbrann: ${kr(baseGlasur)} per brenning`,
     ``,
     `Betal til: ${betalingInfo.navn}`,
     `Kontonummer: ${betalingInfo.konto}`,
@@ -852,11 +998,12 @@ function lastNedPDF() {
   pdf.setTextColor(40, 40, 40);
   const samm = [
     ['Fakturabeløp totalt:',                        kr(faktura)],
-    ['Råbrann per brenning (5,5 %):',          kr(baseRaa)],
-    ['Glasurbrann per brenning (6,5 %):',           kr(baseGlasur)],
-    ['Sum brenningskostnader:',                           kr(totalBrenning)],
-    [`Restbeløp delt likt (${persons.length} pers.):`,
-     `${kr(rest)} → ${kr(likAndel)} per person`],
+    ['Forbruk:', lastCalc.f?.modell === 'kwh' ? `${Math.round(lastCalc.f.kwhTotal)} kWh a ${lastCalc.f.pris.toFixed(2).replace('.',',')} kr/kWh` : '-'],
+    [`Fellesforbruk delt pa ${persons.length}:`,
+     `${kr(rest)} -> ${kr(likAndel)} per person`],
+    ['Til brenning:',                                     kr(totalBrenning)],
+    ['Rabrann per brenning:',                             kr(baseRaa)],
+    ['Glasurbrann per brenning:',                         kr(baseGlasur)],
   ];
   samm.forEach(([label, val]) => {
     pdf.setFont('helvetica', 'bold');   pdf.setFontSize(9);
@@ -1003,6 +1150,7 @@ async function adminBeregn() {
   const maaned     = parseInt($("adm-maaned").value);
   const aar        = parseInt($("adm-aar").value);
   const faktura    = parseFloat($("adm-faktura").value) || 0;
+  const kwh        = parseFloat($("adm-kwh")?.value) || 0;
   const maanedNavn = MAANEDER[maaned - 1];
 
   if (!faktura || faktura <= 0) {
@@ -1020,8 +1168,11 @@ async function adminBeregn() {
         where("aar",    "==", aar))
     );
 
-    // Hent hvem som er med denne måneden
-    const konfig = await hentMånedskonfig(maaned, aar);
+    // Hent hvem som er med denne måneden, og fordelingsinnstillingene
+    const [konfig, fordeling] = await Promise.all([
+      hentMånedskonfig(maaned, aar),
+      hentFordeling()
+    ]);
 
     const counts = {};
     konfig.brennere.forEach(n => counts[n] = { raa: 0, glasur: 0 });
@@ -1031,25 +1182,16 @@ async function adminBeregn() {
     });
 
     // ---- Beregningslogikk ----
-    const baseRaa    = faktura * 0.055;
-    const baseGlasur = faktura * 0.065;
+    const f = fordel(faktura, konfig.alle, counts, fordeling, kwh);
+    const { persons, likAndel, prisRaa, prisGlasur, fastSum, varSum } = f;
 
-    let totalBrenning = 0;
-    const persons = konfig.alle.map(navn => {
-      const { raa, glasur } = counts[navn] || { raa: 0, glasur: 0 };
-      const kost = raa * baseRaa + glasur * baseGlasur;
-      totalBrenning += kost;
-      return { navn, raa, glasur, kost };
-    });
-
-    const rest      = faktura - totalBrenning;
-    const likAndel  = rest / konfig.alle.length;
-
-    lastCalc = { persons, faktura, maaned, aar, maanedNavn, baseRaa, baseGlasur, totalBrenning, rest, likAndel };
+    lastCalc = { persons, faktura, kwh, maaned, aar, maanedNavn,
+                 baseRaa: prisRaa, baseGlasur: prisGlasur,
+                 totalBrenning: varSum, rest: fastSum, likAndel, fordeling, f };
 
     // Lagre faktura i Firestore så statistikk kan bruke den
     setDoc(doc(db, "fakturaer", månedKey(maaned, aar)), {
-      maaned, aar, faktura,
+      maaned, aar, faktura, kwh,
       alle:     konfig.alle,
       brennere: konfig.brennere,
       lagretDato: Timestamp.now()
@@ -1061,20 +1203,34 @@ async function adminBeregn() {
     const adm = $("adm-result");
     adm.innerHTML = `
       <div class="summary-box">
-        <strong>Fakturabeløp:</strong> ${kr(faktura)}<br>
-        <strong>Råbrann per brann:</strong> ${kr(baseRaa)} (5,5 %)<br>
-        <strong>Glasurbrann per brann:</strong> ${kr(baseGlasur)} (6,5 %)<br>
-        <strong>Sum brenningskostnader:</strong> ${kr(totalBrenning)}<br>
-        <strong>Resterende delt likt (${konfig.alle.length} personer):</strong>
-        ${kr(rest)} → <strong>${kr(likAndel)}</strong> per person
+        <strong>Fakturabeløp:</strong> ${kr(faktura)}${f.modell === "kwh"
+          ? ` for ${Math.round(f.kwhTotal)} kWh = <strong>${f.pris.toFixed(2).replace(".", ",")} kr/kWh</strong>`
+          : ""}<br>
+        ${f.modell === "kwh" ? `
+          <strong>Ovn:</strong> ${Math.round(f.kwhOvn)} kWh (${Math.round(f.kwhOvn / f.kwhTotal * 100)} %)
+          = ${kr(varSum)}<br>
+          <strong>Fellesforbruk:</strong> ${Math.round(f.kwhFelles)} kWh = ${kr(fastSum)}
+          → <strong>${kr(likAndel)}</strong> per person (${konfig.alle.length} stk)<br>
+          <strong>Råbrann:</strong> ${kr(prisRaa)} ·
+          <strong>Glasurbrann:</strong> ${kr(prisGlasur)}
+          ${f.skala < 1 ? `<br><em style="color:#b45309">Ovnens anslåtte forbruk oversteg
+            totalen – satsene er skalert ned ${Math.round((1 - f.skala) * 100)} %.</em>` : ""}
+        ` : `
+          <em style="color:#b45309">Forbruk i kWh mangler – bruker reservemodellen.</em><br>
+          <strong>Fellesforbruk (${Math.round(fordeling.fastAndel * 100)} %) delt likt på
+            ${konfig.alle.length}:</strong> ${kr(fastSum)} → <strong>${kr(likAndel)}</strong> per person<br>
+          <strong>Til brenning:</strong> ${kr(varSum)} fordelt på ${f.enheter.toFixed(1)} enheter<br>
+          <strong>Råbrann:</strong> ${kr(prisRaa)} ·
+          <strong>Glasurbrann:</strong> ${kr(prisGlasur)} (${fordeling.vektGlasur}×)
+        `}
       </div>
       ${persons.map(p => {
         const totalt = p.kost + likAndel;
         return `<div class="card">
           <div class="card-name">${p.navn}</div>
           <div class="card-details">
-            Råbrann: ${p.raa} × ${kr(baseRaa)} = ${kr(p.raa * baseRaa)}<br>
-            Glasurbrann: ${p.glasur} × ${kr(baseGlasur)} = ${kr(p.glasur * baseGlasur)}<br>
+            Råbrann: ${p.raa} × ${kr(prisRaa)} = ${kr(p.raa * prisRaa)}<br>
+            Glasurbrann: ${p.glasur} × ${kr(prisGlasur)} = ${kr(p.glasur * prisGlasur)}<br>
             Brenningskostnad: ${kr(p.kost)} · Lik andel: ${kr(likAndel)}
           </div>
           <div class="card-total">${kr(totalt)}</div>
@@ -1224,9 +1380,10 @@ async function lastStatistikk() {
   if (btn) { btn.disabled = true; btn.innerHTML = 'Henter… <span class="spinner"></span>'; }
 
   try {
-    const [brennSnap, faktSnap] = await Promise.all([
+    const [brennSnap, faktSnap, fordeling] = await Promise.all([
       getDocs(collection(db, "brenninger")),
-      getDocs(collection(db, "fakturaer"))
+      getDocs(collection(db, "fakturaer")),
+      hentFordeling()
     ]);
     if (brennSnap.size === 0) {
       $("stat-innhold").innerHTML = `<p style="color:#6b7280">Ingen brenninger registrert ennå.</p>`;
@@ -1237,7 +1394,7 @@ async function lastStatistikk() {
     const fakturaer = {};
     faktSnap.forEach(d => { fakturaer[månedKey(d.data().maaned, d.data().aar)] = d.data(); });
 
-    renderStatistikk(brenninger, fakturaer);
+    renderStatistikk(brenninger, fakturaer, fordeling);
     $("stat-innhold").dataset.lastet = "1";
   } catch (e) {
     console.error("Statistikk-feil:", e);
@@ -1247,27 +1404,19 @@ async function lastStatistikk() {
   }
 }
 
-function beregnMaanedKost(fakt, brenninger) {
+function beregnMaanedKost(fakt, brenninger, fordeling) {
   const { faktura, alle, brennere } = fakt;
-  const baseRaa    = faktura * 0.055;
-  const baseGlasur = faktura * 0.065;
   const counts = {};
   (brennere || []).forEach(n => counts[n] = { raa: 0, glasur: 0 });
   brenninger.forEach(b => { if (counts[b.navn]) counts[b.navn][b.type]++; });
-  let totalBrenning = 0;
-  const persons = (alle || []).map(navn => {
-    const { raa = 0, glasur = 0 } = counts[navn] || {};
-    const kost = raa * baseRaa + glasur * baseGlasur;
-    totalBrenning += kost;
-    return { navn, kost };
-  });
-  const likAndel = (faktura - totalBrenning) / (alle?.length || 1);
+
+  const { persons, likAndel } = fordel(faktura, alle || [], counts, fordeling, fakt.kwh || 0);
   const result = {};
   persons.forEach(p => { result[p.navn] = p.kost + likAndel; });
   return { result, faktura };
 }
 
-function renderStatistikk(data, fakturaer = {}) {
+function renderStatistikk(data, fakturaer = {}, fordeling = FORDELING_DEFAULT) {
   const totalRaa    = data.filter(b => b.type === "raa").length;
   const totalGlasur = data.filter(b => b.type === "glasur").length;
   const total       = data.length;
@@ -1307,7 +1456,7 @@ function renderStatistikk(data, fakturaer = {}) {
     if (!fakt) return;
     harFakturaer = true;
     const mData = data.filter(b => b.maaned === m.maaned && b.aar === m.aar);
-    const { result, faktura } = beregnMaanedKost(fakt, mData);
+    const { result, faktura } = beregnMaanedKost(fakt, mData, fordeling);
     Object.entries(result).forEach(([navn, bel]) => {
       kumKost[navn] = (kumKost[navn] || 0) + bel;
     });
