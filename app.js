@@ -71,6 +71,25 @@ function showFeedback(id, type, msg, timeoutMs = 6000) {
   if (timeoutMs > 0) setTimeout(() => { el.className = "feedback"; }, timeoutMs);
 }
 
+// Dagens dato som ISO-streng (YYYY-MM-DD), i lokal tid
+function isoIdag() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+}
+
+// "2026-08-14" → "14. august 2026"
+function formatDato(iso) {
+  if (!iso || typeof iso !== "string") return "";
+  const [a, m, d] = iso.split("-").map(Number);
+  if (!a || !m || !d) return "";
+  return `${d}. ${MAANEDER[m - 1].toLowerCase()} ${a}`;
+}
+
+// Viser dato hvis registrert, ellers måned og år
+function periodeLabel(b) {
+  return formatDato(b.dato) || `${MAANEDER[b.maaned - 1]} ${b.aar}`;
+}
+
 function populateMonthSelect(id, selected = now.getMonth() + 1) {
   const sel = $(id);
   sel.innerHTML = "";
@@ -116,19 +135,42 @@ document.querySelectorAll(".tab-btn").forEach(btn => {
 // ============================================================
 function initRegister() {
   populateMonthSelect("reg-maaned");
-  $("reg-aar").value = now.getFullYear();
+  $("reg-aar").value  = now.getFullYear();
+  $("reg-dato").value = isoIdag();
   oppdaterNavnDropdown();
   visNyesteRegistreringer();
 
-  // Oppdater navn-dropdown når måned eller år endres
-  $("reg-maaned").addEventListener("change", oppdaterNavnDropdown);
-  $("reg-aar").addEventListener("change", oppdaterNavnDropdown);
+  // Datoen styrer måned og år
+  $("reg-dato").addEventListener("change", () => {
+    const v = $("reg-dato").value;
+    if (!v) return;
+    const [a, m] = v.split("-").map(Number);
+    if (!a || !m) return;
+    $("reg-maaned").value = m;
+    $("reg-aar").value    = a;
+    oppdaterNavnDropdown();
+  });
+
+  // Endres måned/år manuelt, tømmes datoen hvis den ikke lenger passer
+  const synkFraMaaned = () => {
+    const v = $("reg-dato").value;
+    if (v) {
+      const [a, m] = v.split("-").map(Number);
+      if (m !== parseInt($("reg-maaned").value) || a !== parseInt($("reg-aar").value)) {
+        $("reg-dato").value = "";
+      }
+    }
+    oppdaterNavnDropdown();
+  };
+  $("reg-maaned").addEventListener("change", synkFraMaaned);
+  $("reg-aar").addEventListener("change", synkFraMaaned);
 
   $("reg-btn").addEventListener("click", async () => {
     const navn  = $("reg-navn").value.trim();
     const type  = document.querySelector('input[name="brenning"]:checked')?.value;
     const maaned = parseInt($("reg-maaned").value);
     const aar    = parseInt($("reg-aar").value);
+    const dato   = $("reg-dato").value || "";
 
     if (!navn)  return showFeedback("reg-feedback", "error", "Velg navn.");
     if (!type)  return showFeedback("reg-feedback", "error", "Velg type brenning.");
@@ -142,13 +184,14 @@ function initRegister() {
     btn.innerHTML = 'Lagrer… <span class="spinner"></span>';
 
     try {
-      await addDoc(collection(db, "brenninger"), {
-        navn, type, maaned, aar,
-        opprettet: Timestamp.now()
-      });
+      const brenning = { navn, type, maaned, aar, opprettet: Timestamp.now() };
+      if (dato) brenning.dato = dato;
+
+      await addDoc(collection(db, "brenninger"), brenning);
+
       const typeNavn = type === "raa" ? "Råbrann" : "Glasurbrann";
       showFeedback("reg-feedback", "success",
-        `✓ ${typeNavn} registrert for ${navn} – ${MAANEDER[maaned - 1]} ${aar}`);
+        `✓ ${typeNavn} registrert for ${navn} – ${periodeLabel(brenning)}`);
       // Reset form
       $("reg-navn").value = "";
       document.querySelectorAll('input[name="brenning"]').forEach(r => r.checked = false);
@@ -171,7 +214,7 @@ async function visNyesteRegistreringer() {
     const snap = await getDocs(
       query(collection(db, "brenninger"),
         orderBy("opprettet", "desc"),
-        limit(10))
+        limit(25))
     );
 
     if (snap.size === 0) {
@@ -187,8 +230,8 @@ async function visNyesteRegistreringer() {
         <strong>${b.navn}</strong>
         <span style="color:#6b7280">–</span>
         ${b.type === "raa" ? "Råbrann" : "Glasurbrann"}
-        <span style="color:#6b7280;font-size:0.85rem;margin-left:auto">
-          ${MAANEDER[b.maaned - 1]} ${b.aar}
+        <span style="color:#6b7280;font-size:0.85rem;margin-left:auto;white-space:nowrap">
+          ${periodeLabel(b)}
         </span>
       </div>`).join("");
   } catch (e) {
@@ -891,15 +934,18 @@ async function adminLastBrenninger() {
 
     const liste = [];
     snap.forEach(d => liste.push({ id: d.id, ...d.data() }));
-    liste.sort((a, b) => a.navn.localeCompare(b.navn));
+    // Sorter på dato (nyeste først), deretter navn
+    liste.sort((a, b) =>
+      (b.dato || "").localeCompare(a.dato || "") || a.navn.localeCompare(b.navn));
 
     wrap.innerHTML = `<div class="table-wrap"><table>
-      <thead><tr><th>Navn</th><th>Type</th><th></th></tr></thead>
+      <thead><tr><th>Navn</th><th>Type</th><th>Dato</th><th></th></tr></thead>
       <tbody>
         ${liste.map(b => `
           <tr id="brow-${b.id}">
             <td>${b.navn}</td>
             <td>${b.type === "raa" ? "Råbrann" : "Glasurbrann"}</td>
+            <td style="color:#6b7280;white-space:nowrap">${formatDato(b.dato) || "—"}</td>
             <td style="text-align:right">
               <button class="btn-slett-brenning" data-id="${b.id}"
                 style="background:none;border:1.5px solid #dc2626;color:#dc2626;

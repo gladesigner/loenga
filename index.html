@@ -48,18 +48,29 @@
       </div>
 
       <div class="form-group">
+        <label for="reg-dato">Dato
+          <span style="font-weight:400;color:var(--text-muted);font-size:0.85rem">(valgfritt)</span>
+        </label>
+        <input id="reg-dato" type="date">
+      </div>
+
+      <div class="form-group">
         <label>Måned og år</label>
         <div class="row">
           <select id="reg-maaned"></select>
           <input id="reg-aar" type="number" min="2024" max="2035" placeholder="2026">
         </div>
+        <p style="font-size:0.8rem;color:var(--text-muted);margin-top:6px">
+          Settes automatisk fra datoen. Tøm datofeltet for å velge måned manuelt.
+        </p>
       </div>
 
       <button id="reg-btn" class="btn-primary">Legg til brenning</button>
       <div id="reg-feedback" class="feedback"></div>
 
-      <h3 style="margin-top: 28px">Siste registreringer</h3>
-      <div id="reg-siste-liste" class="table-wrap" style="margin-top: 8px"></div>
+      <h3 style="margin-top: 28px">Siste 25 registreringer</h3>
+      <div id="reg-siste-liste" class="table-wrap"
+           style="margin-top: 8px; max-height: 440px; overflow-y: auto"></div>
     </section>
 
     <!-- ======================================================
